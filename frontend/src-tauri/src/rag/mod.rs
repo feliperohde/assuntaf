@@ -11,6 +11,7 @@ pub mod entities;
 pub mod history;
 pub mod indexer;
 pub mod llm;
+pub mod qdrant;
 pub mod retriever;
 pub mod store;
 

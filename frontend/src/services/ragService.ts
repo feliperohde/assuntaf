@@ -14,6 +14,18 @@ export interface RagConfig {
   ollamaEndpoint: string | null;
   extractFacts: boolean;
   autoDiarize: boolean;
+  vectorStore: 'local' | 'qdrant';
+  qdrantUrl: string | null;
+  qdrantApiKey: string | null;
+  /** Collection prefix; the embedding model is appended. */
+  qdrantCollection: string | null;
+}
+
+export interface QdrantProbe {
+  url: string;
+  reachable: boolean;
+  collections: string[];
+  error: string | null;
 }
 
 export interface ProjectIndexStatus {
@@ -170,6 +182,7 @@ export const ragService = {
   search: (request: SearchRequest) => invoke<SearchResponse>('rag_search', { request }),
   testOllama: (endpoint: string | null, model: string) =>
     invoke<OllamaProbe>('rag_test_ollama', { endpoint, model }),
+  testQdrant: (url: string, apiKey: string | null) => invoke<QdrantProbe>('rag_test_qdrant', { url, apiKey }),
   listTickets: (projectId: string) => invoke<TicketSummary[]>('rag_list_tickets', { projectId }),
   ticketFacts: (entityId: string) => invoke<Fact[]>('rag_ticket_facts', { entityId }),
   listFacts: (projectId: string, factType: FactType, limit?: number) =>

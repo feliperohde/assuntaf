@@ -2,13 +2,14 @@ use log::{error, info};
 use serde::Deserialize;
 use tauri::{AppHandle, Runtime};
 
-use super::answer::{ask_project, Answer, ConversationTurn};
+use super::answer::{ask_project_with, Answer, ConversationTurn};
 use super::entities::{facts_by_type, facts_page, list_tickets, ticket_facts, tickets_page, FactRow, TicketSummary};
 use super::history::{self, AskHistoryEntry, AskHistoryItem, Page};
 use super::embeddings::{probe_ollama, OllamaProbe};
 use super::indexer::{embedder_from_config, index_meeting_with_app, resolve_endpoint, IndexOutcome};
 use super::llm::ConfiguredChatModel;
-use super::retriever::{hybrid_search, SearchResponse};
+use super::retriever::{hybrid_search_with, SearchResponse};
+use super::qdrant::{probe as probe_qdrant, QdrantProbe};
 use super::store::{ProjectIndexStatus, RagConfig, RagStore, SearchFilters};
 use crate::state::AppState;
 
@@ -112,7 +113,7 @@ pub async fn rag_search(
         date_to: request.date_to,
     };
     let limit = request.limit.unwrap_or(DEFAULT_SEARCH_LIMIT).clamp(1, MAX_SEARCH_LIMIT);
-    hybrid_search(pool, embedder.as_ref(), Some(&request.project_id), request.query.trim(), &filters, limit)
+    hybrid_search_with(pool, embedder.as_ref(), config.qdrant().as_ref(), Some(&request.project_id), request.query.trim(), &filters, limit)
         .await
         .map_err(|e| err("search", e))
 }
@@ -148,9 +149,11 @@ pub async fn rag_ask<R: Runtime>(
         .await
         .map_err(|e| err("prepare the language model", e))?;
     info!("RAG: answering question for project {}", request.project_id);
-    let mut answer = ask_project(
+    let qdrant = config.qdrant();
+    let mut answer = ask_project_with(
         pool,
         embedder.as_ref(),
+        qdrant.as_ref(),
         &llm,
         (!request.all_projects).then_some(request.project_id.as_str()),
         &request.question,
@@ -286,4 +289,13 @@ pub async fn rag_test_ollama(
 ) -> Result<OllamaProbe, String> {
     let endpoint = resolve_endpoint(state.db_manager.pool(), endpoint.as_deref()).await;
     Ok(probe_ollama(endpoint.as_deref(), &model).await)
+}
+
+/// Checks a Qdrant server (URL and API key) by listing its collections.
+#[tauri::command]
+pub async fn rag_test_qdrant(url: String, api_key: Option<String>) -> Result<QdrantProbe, String> {
+    if url.trim().is_empty() {
+        return Err("Qdrant URL is empty".to_string());
+    }
+    Ok(probe_qdrant(&url, api_key.as_deref()).await)
 }
