@@ -458,11 +458,13 @@ impl SummaryService {
 
             match model {
                 Ok(model_def) => {
-                    // Reserve 300 tokens for prompt overhead
-                    let optimal = model_def.context_size.saturating_sub(300) as usize;
+                    // Context sized for this machine's memory; leaves room for
+                    // prompt overhead and the summary itself
+                    let context_size = models::effective_context_size(&model_def);
+                    let optimal = models::chunk_tokens_for(context_size);
                     info!(
-                        "✓ Using BuiltInAI context size: {} tokens (chunk size: {})",
-                        model_def.context_size, optimal
+                        "✓ Using BuiltInAI context size: {} tokens (model max {}, chunk size: {})",
+                        context_size, model_def.context_size, optimal
                     );
                     optimal
                 }

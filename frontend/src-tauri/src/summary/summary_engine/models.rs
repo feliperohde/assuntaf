@@ -321,6 +321,52 @@ pub fn format_prompt(
 /// Default max tokens for generation (increased for better summary quality)
 pub const DEFAULT_MAX_TOKENS: i32 = 4096;
 
+/// Context (tokens) this machine can afford for a built-in model. The models
+/// support 32K, but the KV cache for 32K next to a 2–4B model does not fit in
+/// 8 GB of unified memory (macOS kills the helper: "Sidecar closed stdout").
+/// Override with ASSUNTA_LLM_MAX_CONTEXT.
+pub fn memory_context_cap(total_memory_gb: f64) -> u32 {
+    if total_memory_gb <= 0.0 {
+        8192
+    } else if total_memory_gb <= 9.0 {
+        8192
+    } else if total_memory_gb <= 17.0 {
+        16384
+    } else {
+        32768
+    }
+}
+
+fn total_memory_gb() -> f64 {
+    use once_cell::sync::Lazy;
+    static TOTAL: Lazy<f64> = Lazy::new(|| {
+        let mut system = sysinfo::System::new();
+        system.refresh_memory();
+        system.total_memory() as f64 / (1024.0 * 1024.0 * 1024.0)
+    });
+    *TOTAL
+}
+
+/// Context size to request for `model` on this machine.
+pub fn effective_context_size(model: &ModelDef) -> u32 {
+    let cap = std::env::var("ASSUNTA_LLM_MAX_CONTEXT")
+        .ok()
+        .and_then(|v| v.parse::<u32>().ok())
+        .filter(|&v| v >= 2048)
+        .unwrap_or_else(|| memory_context_cap(total_memory_gb()));
+    model.context_size.min(cap)
+}
+
+/// Output budget for a context: a quarter of it, at most DEFAULT_MAX_TOKENS.
+pub fn effective_max_tokens(context_size: u32) -> i32 {
+    DEFAULT_MAX_TOKENS.min((context_size / 4) as i32)
+}
+
+/// Transcript tokens per chunk so prompt + answer fit in the context.
+pub fn chunk_tokens_for(context_size: u32) -> usize {
+    (context_size as i64 - 300 - effective_max_tokens(context_size) as i64).max(1024) as usize
+}
+
 /// Idle timeout for sidecar (seconds) - can be overridden via LLAMA_IDLE_TIMEOUT env var
 pub const DEFAULT_IDLE_TIMEOUT_SECS: u64 = 300; // 5 minutes
 
@@ -343,6 +389,13 @@ mod tests {
         );
         assert_eq!(qwen_2b.size_mb, 1221);
         assert_eq!(qwen_2b.context_size, 32768);
+        assert_eq!(memory_context_cap(8.0), 8192);
+        assert_eq!(memory_context_cap(16.0), 16384);
+        assert_eq!(memory_context_cap(64.0), 32768);
+        assert_eq!(effective_max_tokens(8192), 2048);
+        assert_eq!(effective_max_tokens(32768), DEFAULT_MAX_TOKENS);
+        assert_eq!(chunk_tokens_for(8192), 8192 - 300 - 2048);
+        assert!(effective_context_size(&qwen_2b) <= 32768);
         assert_eq!(qwen_2b.layer_count, 24);
         assert_eq!(qwen_2b.sampling, SamplingParams::qwen35_summary(vec!["<|im_end|>".to_string()]));
 

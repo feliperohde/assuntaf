@@ -127,6 +127,60 @@ impl SamplingConfig {
 // VRAM Detection and GPU Layer Calculation
 // ============================================================================
 
+/// Minimum context allocated per request.
+const MIN_CONTEXT: u32 = 2048;
+
+/// Total physical memory in GB, if it can be read.
+fn total_memory_gb() -> Option<f64> {
+    #[cfg(target_os = "macos")]
+    {
+        let output = std::process::Command::new("sysctl").args(["-n", "hw.memsize"]).output().ok()?;
+        let bytes: u64 = String::from_utf8(output.stdout).ok()?.trim().parse().ok()?;
+        return Some(bytes as f64 / (1024.0 * 1024.0 * 1024.0));
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let meminfo = std::fs::read_to_string("/proc/meminfo").ok()?;
+        let kb: u64 = meminfo
+            .lines()
+            .find(|l| l.starts_with("MemTotal:"))?
+            .split_whitespace()
+            .nth(1)?
+            .parse()
+            .ok()?;
+        return Some(kb as f64 / (1024.0 * 1024.0));
+    }
+    #[allow(unreachable_code)]
+    None
+}
+
+/// Largest context worth allocating on this machine (same tiers as the app;
+/// LLAMA_MAX_CONTEXT overrides).
+fn memory_context_cap() -> u32 {
+    if let Some(cap) = std::env::var("LLAMA_MAX_CONTEXT").ok().and_then(|v| v.parse::<u32>().ok()) {
+        return cap.max(MIN_CONTEXT);
+    }
+    match total_memory_gb() {
+        Some(gb) if gb > 17.0 => 32768,
+        Some(gb) if gb > 9.0 => 16384,
+        _ => 8192,
+    }
+}
+
+/// Context for a request: prompt + answer budget, rounded up to 256, at least
+/// MIN_CONTEXT, at most `max_ctx`. Err(max usable prompt) when the prompt itself
+/// does not fit.
+fn request_context_size(prompt_tokens: usize, max_tokens: i32, max_ctx: u32) -> Result<u32, u32> {
+    // Keep room for at least a short answer
+    let min_answer = 256u32.min(max_ctx / 4);
+    if prompt_tokens as u64 + min_answer as u64 > max_ctx as u64 {
+        return Err(max_ctx - min_answer);
+    }
+    let wanted = prompt_tokens as u64 + max_tokens.max(0) as u64 + 64;
+    let rounded = wanted.div_ceil(256) * 256;
+    Ok((rounded as u32).clamp(MIN_CONTEXT.min(max_ctx), max_ctx))
+}
+
 /// Detect available VRAM in GB
 fn detect_vram_gb() -> f32 {
     #[cfg(feature = "metal")]
@@ -326,8 +380,8 @@ impl ModelState {
 
         eprintln!("📥 Loading model: {}", model_path.display());
 
-        // Detect GPU layers
-        let gpu_layers = get_default_gpu_layers(&model_path, context_size);
+        // Detect GPU layers (for the context this machine will actually use)
+        let gpu_layers = get_default_gpu_layers(&model_path, context_size.min(memory_context_cap()));
 
         // Configure model parameters with GPU offload
         let model_params = LlamaModelParams::default().with_n_gpu_layers(gpu_layers);
@@ -364,11 +418,28 @@ impl ModelState {
             })
             .unwrap_or(2);
 
+        let tokens_list = model
+            .str_to_token(&prompt, AddBos::Always)
+            .with_context(|| "failed to tokenize prompt")?;
+
+        eprintln!("📝 Tokenized prompt: {} tokens", tokens_list.len());
+
+        // Allocate only what this request needs (the KV cache grows with n_ctx;
+        // allocating the model's full window can exhaust memory and get the
+        // process killed), never more than requested or this machine allows
+        let max_ctx = self.context_size.min(memory_context_cap());
+        let n_ctx = request_context_size(tokens_list.len(), max_tokens, max_ctx).map_err(|needed| {
+            anyhow::anyhow!(
+                "Prompt too long: {} tokens, but at most {} fit in this model's context on this machine",
+                tokens_list.len(),
+                needed
+            )
+        })?;
+        eprintln!("🧠 Context: {} tokens (limit {})", n_ctx, max_ctx);
+
         let ctx_params = LlamaContextParams::default()
-            .with_n_ctx(Some(
-                NonZeroU32::new(self.context_size).context("Invalid ctx size")?,
-            ))
-            .with_n_batch(self.context_size)
+            .with_n_ctx(Some(NonZeroU32::new(n_ctx).context("Invalid ctx size")?))
+            .with_n_batch(n_ctx)
             .with_n_threads(threads)
             .with_n_threads_batch(threads);
 
@@ -376,14 +447,8 @@ impl ModelState {
             .new_context(&self.backend, ctx_params)
             .context("unable to create the llama_context")?;
 
-        let tokens_list = model
-            .str_to_token(&prompt, AddBos::Always)
-            .with_context(|| "failed to tokenize prompt")?;
-
-        eprintln!("📝 Tokenized prompt: {} tokens", tokens_list.len());
-
-        // Use context size for batch capacity to handle long prompts
-        let batch_size = self.context_size as usize;
+        // The whole prompt goes in one batch
+        let batch_size = n_ctx as usize;
         let mut batch = LlamaBatch::new(batch_size, 1);
 
         let last_index: i32 = (tokens_list.len() - 1) as i32;
@@ -451,6 +516,11 @@ impl ModelState {
             // Check if we've generated enough tokens
             if (n_cur - n_prompt_tokens) >= max_tokens {
                 eprintln!("✓ Reached max_tokens limit");
+                break;
+            }
+            // Never decode past the context (llama.cpp may abort)
+            if n_cur as u32 >= n_ctx {
+                eprintln!("✓ Context full");
                 break;
             }
 
@@ -746,5 +816,16 @@ mod tests {
         assert_eq!(sampling.repeat_penalty, 1.05);
         assert_eq!(sampling.penalty_last_n, 256);
         assert!(sampling.uses_penalties());
+    }
+
+    #[test]
+    fn request_context_fits_prompt_and_answer_within_limits() {
+        // Short prompt: small context, not the model maximum
+        assert_eq!(request_context_size(500, 1024, 32768), Ok(2048));
+        assert_eq!(request_context_size(3000, 2048, 32768), Ok(5376));
+        // Capped at the limit; generation stops at the context end
+        assert_eq!(request_context_size(7000, 2048, 8192), Ok(8192));
+        // Prompt that cannot fit: error instead of a crash
+        assert_eq!(request_context_size(8100, 2048, 8192), Err(8192 - 256));
     }
 }

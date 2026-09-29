@@ -180,10 +180,12 @@ pub async fn generate_with_builtin(
 
     // Prepare generation request with model-specific sampling parameters
     let sampling = model_def.sampling.sanitize_for_llama_helper();
+    // Sized for this machine's memory, not the model's maximum
+    let context_size = models::effective_context_size(&model_def);
     let request = Request::Generate {
         prompt: formatted_prompt,
-        max_tokens: Some(models::DEFAULT_MAX_TOKENS),
-        context_size: Some(model_def.context_size),
+        max_tokens: Some(models::effective_max_tokens(context_size)),
+        context_size: Some(context_size),
         model_path: Some(model_path.to_string_lossy().to_string()),
         temperature: Some(sampling.temperature),
         top_k: Some(sampling.top_k),
