@@ -8,8 +8,8 @@ use crate::{
     database::{
         models::MeetingModel,
         repositories::{
-            meeting::MeetingsRepository, setting::SettingsRepository,
-            transcript::TranscriptsRepository,
+            meeting::MeetingsRepository, project::ProjectsRepository,
+            setting::SettingsRepository, transcript::TranscriptsRepository,
         },
     },
     state::AppState,
@@ -30,6 +30,7 @@ pub struct ApiResponse<T> {
 pub struct Meeting {
     pub id: String,
     pub title: String,
+    pub project_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -122,6 +123,7 @@ pub struct MeetingDetails {
     pub title: String,
     pub created_at: String,
     pub updated_at: String,
+    pub project_id: Option<String>,
     pub transcripts: Vec<MeetingTranscript>,
 }
 
@@ -322,15 +324,17 @@ async fn make_api_request<R: Runtime, T: for<'de> Deserialize<'de>>(
 pub async fn api_get_meetings<R: Runtime>(
     _app: AppHandle<R>,
     state: tauri::State<'_, AppState>,
+    project_id: Option<String>,
     auth_token: Option<String>,
 ) -> Result<Vec<Meeting>, String> {
     log_info!(
-        "api_get_meetings called with auth_token(native) : {}",
+        "api_get_meetings called with project_id: {:?}, auth_token(native) : {}",
+        project_id,
         auth_token.is_some()
     );
     let pool = state.db_manager.pool();
     let meetings: Result<Vec<MeetingModel>, sqlx::Error> =
-        MeetingsRepository::get_meetings(pool).await;
+        MeetingsRepository::get_meetings(pool, project_id.as_deref()).await;
 
     match meetings {
         Ok(meeting_models) => {
@@ -341,6 +345,7 @@ pub async fn api_get_meetings<R: Runtime>(
                 .map(|m| Meeting {
                     id: m.id,
                     title: m.title,
+                    project_id: m.project_id,
                 })
                 .collect();
             Ok(result)
@@ -357,6 +362,7 @@ pub async fn api_search_transcripts<R: Runtime>(
     _app: AppHandle<R>,
     state: tauri::State<'_, AppState>,
     query: String,
+    project_id: Option<String>,
     auth_token: Option<String>,
 ) -> Result<Vec<TranscriptSearchResult>, String> {
     log_info!(
@@ -367,7 +373,7 @@ pub async fn api_search_transcripts<R: Runtime>(
 
     let pool = state.db_manager.pool();
 
-    match TranscriptsRepository::search_transcripts(pool, &query).await {
+    match TranscriptsRepository::search_transcripts(pool, &query, project_id.as_deref()).await {
         Ok(results) => {
             log_info!(
                 "Search completed successfully with {} results.",
@@ -933,6 +939,7 @@ pub async fn api_save_transcript<R: Runtime>(
     meeting_title: String,
     transcripts: Vec<serde_json::Value>,
     folder_path: Option<String>,
+    project_id: Option<String>,
     auth_token: Option<String>,
 ) -> Result<serde_json::Value, String> {
     log_info!(
@@ -972,12 +979,17 @@ pub async fn api_save_transcript<R: Runtime>(
 
     let pool = state.db_manager.pool();
 
+    let project_id = ProjectsRepository::resolve_project_id(pool, project_id.as_deref())
+        .await
+        .map_err(|e| format!("Failed to resolve project: {}", e))?;
+
     // Now, call the repository with the correctly typed data.
     match TranscriptsRepository::save_transcript(
         pool,
         &meeting_title,
         &transcripts_to_save,
         folder_path,
+        &project_id,
     )
     .await
     {

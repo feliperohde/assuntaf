@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { ChevronDown, ChevronRight, File, Settings, ChevronLeftCircle, ChevronRightCircle, Calendar, StickyNote, Home, Trash2, Mic, Square, Plus, Search, Pencil, NotebookPen, SearchIcon, X, Upload } from 'lucide-react';
+import { ChevronDown, ChevronRight, File, Settings, ChevronLeftCircle, ChevronRightCircle, Calendar, StickyNote, Home, Trash2, Mic, Square, Plus, Search, Pencil, NotebookPen, SearchIcon, X, Upload, FolderKanban, FolderInput } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useSidebar } from './SidebarProvider';
 import type { CurrentMeeting } from '@/components/Sidebar/SidebarProvider';
@@ -16,6 +16,16 @@ import { toast } from 'sonner';
 import { useRecordingState } from '@/contexts/RecordingStateContext';
 import { useImportDialog } from '@/contexts/ImportDialogContext';
 import { useConfig } from '@/contexts/ConfigContext';
+import { useProject } from '@/contexts/ProjectContext';
+import { projectService } from '@/services/projectService';
+import { ProjectSelector } from './ProjectSelector';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 import {
   Dialog,
@@ -61,6 +71,12 @@ const Sidebar: React.FC = () => {
   const { isRecording } = useRecordingState();
   const { openImportDialog } = useImportDialog();
   const { betaFeatures } = useConfig();
+  const { projects, activeProjectId } = useProject();
+  const [moveModalState, setMoveModalState] = useState<{ isOpen: boolean; meetingId: string | null; targetProjectId: string }>({
+    isOpen: false,
+    meetingId: null,
+    targetProjectId: '',
+  });
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['meetings']));
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [showModelSettings, setShowModelSettings] = useState(false);
@@ -354,6 +370,26 @@ const Sidebar: React.FC = () => {
     }
   };
 
+  const handleMoveConfirm = async () => {
+    const { meetingId, targetProjectId } = moveModalState;
+    if (!meetingId || !targetProjectId) return;
+    try {
+      await projectService.setMeetingProject(meetingId, targetProjectId);
+      if (targetProjectId !== activeProjectId) {
+        setMeetings(meetings.filter((m: CurrentMeeting) => m.id !== meetingId));
+      }
+      const target = projects.find(p => p.id === targetProjectId);
+      toast.success(`Meeting moved to ${target?.name ?? 'project'}`);
+    } catch (error) {
+      console.error('Failed to move meeting:', error);
+      toast.error('Failed to move meeting', {
+        description: error instanceof Error ? error.message : String(error)
+      });
+    } finally {
+      setMoveModalState({ isOpen: false, meetingId: null, targetProjectId: '' });
+    }
+  };
+
   const handleDeleteConfirm = () => {
     if (deleteModalState.itemId) {
       handleDelete(deleteModalState.itemId);
@@ -450,6 +486,7 @@ const Sidebar: React.FC = () => {
     const isHomePage = pathname === '/';
     const isMeetingPage = pathname?.includes('/meeting-details');
     const isSettingsPage = pathname === '/settings';
+    const isProjectsPage = pathname === '/projects';
 
     return (
       <TooltipProvider>
@@ -521,6 +558,21 @@ const Sidebar: React.FC = () => {
             </TooltipTrigger>
             <TooltipContent side="right">
               <p>Meeting Notes</p>
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => router.push('/projects')}
+                className={`p-2 rounded-lg transition-colors duration-150 ${isProjectsPage ? 'bg-gray-100' : 'hover:bg-gray-100'
+                  }`}
+              >
+                <FolderKanban className="w-5 h-5 text-gray-600" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              <p>Projects</p>
             </TooltipContent>
           </Tooltip>
 
@@ -621,6 +673,17 @@ const Sidebar: React.FC = () => {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
+                        setMoveModalState({ isOpen: true, meetingId: item.id, targetProjectId: activeProjectId });
+                      }}
+                      className="hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 flex-shrink-0"
+                      aria-label="Move meeting to another project"
+                      title="Move to project"
+                    >
+                      <FolderInput className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
                         handleEditStart(item.id, item.title);
                       }}
                       className="hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 flex-shrink-0"
@@ -693,6 +756,8 @@ const Sidebar: React.FC = () => {
                   <span>Meetily</span>
                 </span> */}
                 <Logo isCollapsed={isCollapsed} />
+
+                <ProjectSelector />
 
                 <div className="relative mb-1">
                   <InputGroup >
@@ -824,6 +889,45 @@ const Sidebar: React.FC = () => {
         onConfirm={handleDeleteConfirm}
         onCancel={() => setDeleteModalState({ isOpen: false, itemId: null })}
       />
+
+      {/* Move Meeting to Project Modal */}
+      <Dialog open={moveModalState.isOpen} onOpenChange={(open) => {
+        if (!open) setMoveModalState({ isOpen: false, meetingId: null, targetProjectId: '' });
+      }}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogTitle>Move Meeting to Project</DialogTitle>
+          <div className="py-4">
+            <Select
+              value={moveModalState.targetProjectId}
+              onValueChange={(value) => setMoveModalState(prev => ({ ...prev, targetProjectId: value }))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select a project" />
+              </SelectTrigger>
+              <SelectContent>
+                {projects.map(project => (
+                  <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <button
+              onClick={() => setMoveModalState({ isOpen: false, meetingId: null, targetProjectId: '' })}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleMoveConfirm}
+              disabled={!moveModalState.targetProjectId}
+              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+            >
+              Move
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit Meeting Title Modal */}
       <Dialog open={editModalState.isOpen} onOpenChange={(open) => {

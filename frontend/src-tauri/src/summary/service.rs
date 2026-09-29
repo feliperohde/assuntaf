@@ -1,5 +1,6 @@
 use crate::database::repositories::{
-    meeting::MeetingsRepository, setting::SettingsRepository, summary::SummaryProcessesRepository,
+    meeting::MeetingsRepository, project::ProjectsRepository, setting::SettingsRepository,
+    summary::SummaryProcessesRepository,
 };
 use crate::summary::llm_client::LLMProvider;
 use crate::summary::language_detection::detect_summary_language;
@@ -500,6 +501,17 @@ impl SummaryService {
             }
         };
         let template_fingerprint = template_cache_fingerprint(&template);
+
+        // Give the model the owning project's background (context, glossary, members)
+        let custom_prompt = match ProjectsRepository::project_context_for_meeting(&pool, &meeting_id).await {
+            Ok(Some(project_context)) if custom_prompt.trim().is_empty() => project_context,
+            Ok(Some(project_context)) => format!("{project_context}\n\n{custom_prompt}"),
+            Ok(None) => custom_prompt,
+            Err(e) => {
+                warn!("Failed to load project context for meeting_id={}: {}", meeting_id, e);
+                custom_prompt
+            }
+        };
 
         let cache_source = build_summary_cache_source(
             &text,

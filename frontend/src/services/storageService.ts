@@ -7,11 +7,13 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { Transcript } from '@/types';
+import { getActiveProjectId } from './projectService';
 
 export interface SaveMeetingRequest {
   meetingTitle: string;
   transcripts: Transcript[];
   folderPath: string | null;
+  projectId?: string;
 }
 
 export interface SaveMeetingResponse {
@@ -34,17 +36,20 @@ export class StorageService {
    * @param meetingTitle - Title of the meeting
    * @param transcripts - Array of transcript segments
    * @param folderPath - Optional folder path for audio file
+   * @param projectId - Project that owns the meeting (defaults to the active project)
    * @returns Promise with { meeting_id: string }
    */
   async saveMeeting(
     meetingTitle: string,
     transcripts: Transcript[],
-    folderPath: string | null
+    folderPath: string | null,
+    projectId: string = getActiveProjectId()
   ): Promise<SaveMeetingResponse> {
     return invoke<SaveMeetingResponse>('api_save_transcript', {
       meetingTitle,
       transcripts,
       folderPath,
+      projectId,
     });
   }
 
@@ -58,11 +63,11 @@ export class StorageService {
   }
 
   /**
-   * Get list of all meetings
+   * Get list of meetings, optionally scoped to a project
    * @returns Promise with array of meetings
    */
-  async getMeetings(): Promise<Meeting[]> {
-    return invoke<Meeting[]>('api_get_meetings');
+  async getMeetings(projectId?: string): Promise<Meeting[]> {
+    return invoke<Meeting[]>('api_get_meetings', { projectId: projectId ?? null });
   }
 }
 

@@ -49,6 +49,7 @@ pub mod anthropic;
 pub mod groq;
 pub mod openrouter;
 pub mod parakeet_engine;
+pub mod projects;
 pub mod state;
 pub mod summary;
 pub mod tray;
@@ -616,6 +617,16 @@ pub fn run() {
             get_transcription_status,
             read_audio_file,
             save_transcript,
+            projects::commands::list_projects,
+            projects::commands::get_project,
+            projects::commands::create_project,
+            projects::commands::update_project,
+            projects::commands::delete_project,
+            projects::commands::set_meeting_project,
+            projects::commands::list_project_members,
+            projects::commands::create_project_member,
+            projects::commands::update_project_member,
+            projects::commands::delete_project_member,
             analytics::commands::init_analytics,
             analytics::commands::disable_analytics,
             analytics::commands::track_event,

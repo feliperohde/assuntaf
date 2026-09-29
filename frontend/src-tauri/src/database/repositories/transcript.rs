@@ -15,6 +15,7 @@ impl TranscriptsRepository {
         meeting_title: &str,
         transcripts: &[TranscriptSegment],
         folder_path: Option<String>,
+        project_id: &str,
     ) -> Result<String, SqlxError> {
         let meeting_id = format!("meeting-{}", Uuid::new_v4());
 
@@ -25,13 +26,14 @@ impl TranscriptsRepository {
 
         // 1. Create the new meeting
         let result = sqlx::query(
-            "INSERT INTO meetings (id, title, created_at, updated_at, folder_path) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO meetings (id, title, created_at, updated_at, folder_path, project_id) VALUES (?, ?, ?, ?, ?, ?)",
         )
         .bind(&meeting_id)
         .bind(meeting_title)
         .bind(now)
         .bind(now)
         .bind(&folder_path)
+        .bind(project_id)
         .execute(&mut *transaction)
         .await;
 
@@ -82,11 +84,12 @@ impl TranscriptsRepository {
         Ok(meeting_id)
     }
 
-    /// Searches for a query string within the transcripts.
+    /// Searches for a query string within the transcripts, optionally scoped to one project.
     /// It returns a list of matching transcripts with context.
     pub async fn search_transcripts(
         pool: &SqlitePool,
         query: &str,
+        project_id: Option<&str>,
     ) -> Result<Vec<TranscriptSearchResult>, SqlxError> {
         if query.trim().is_empty() {
             return Ok(Vec::new());
@@ -98,9 +101,12 @@ impl TranscriptsRepository {
             "SELECT m.id, m.title, t.transcript, t.timestamp
              FROM meetings m
              JOIN transcripts t ON m.id = t.meeting_id
-             WHERE LOWER(t.transcript) LIKE ?",
+             WHERE LOWER(t.transcript) LIKE ?
+               AND (? IS NULL OR m.project_id = ?)",
         )
         .bind(&search_query)
+        .bind(project_id)
+        .bind(project_id)
         .fetch_all(pool)
         .await?;
 

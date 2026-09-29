@@ -24,6 +24,7 @@ import { UpdateCheckProvider } from '@/components/UpdateCheckProvider'
 import { RecordingPostProcessingProvider } from '@/contexts/RecordingPostProcessingProvider'
 import { ImportAudioDialog, ImportDropOverlay } from '@/components/ImportAudio'
 import { ImportDialogProvider } from '@/contexts/ImportDialogContext'
+import { ProjectProvider } from '@/contexts/ProjectContext'
 import { isAudioExtension, getAudioFormatsDisplayList } from '@/constants/audioFormats'
 
 
@@ -240,6 +241,7 @@ export default function RootLayout({
                 <OllamaDownloadProvider>
                   <OnboardingProvider>
                     <UpdateCheckProvider>
+                      <ProjectProvider>
                       <SidebarProvider>
                         <TooltipProvider>
                           <RecordingPostProcessingProvider>
@@ -267,6 +269,7 @@ export default function RootLayout({
                           </RecordingPostProcessingProvider>
                         </TooltipProvider>
                       </SidebarProvider>
+                      </ProjectProvider>
                     </UpdateCheckProvider>
                   </OnboardingProvider>
 

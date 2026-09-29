@@ -7,11 +7,26 @@ use tracing::{error, info};
 pub struct MeetingsRepository;
 
 impl MeetingsRepository {
-    pub async fn get_meetings(pool: &SqlitePool) -> Result<Vec<MeetingModel>, sqlx::Error> {
-        let meetings =
-            sqlx::query_as::<_, MeetingModel>("SELECT * FROM meetings ORDER BY created_at DESC")
+    /// Lists meetings, newest first. When `project_id` is given, only that project's meetings.
+    pub async fn get_meetings(
+        pool: &SqlitePool,
+        project_id: Option<&str>,
+    ) -> Result<Vec<MeetingModel>, sqlx::Error> {
+        let meetings = match project_id {
+            Some(project_id) => {
+                sqlx::query_as::<_, MeetingModel>(
+                    "SELECT * FROM meetings WHERE project_id = ? ORDER BY created_at DESC",
+                )
+                .bind(project_id)
                 .fetch_all(pool)
-                .await?;
+                .await?
+            }
+            None => {
+                sqlx::query_as::<_, MeetingModel>("SELECT * FROM meetings ORDER BY created_at DESC")
+                    .fetch_all(pool)
+                    .await?
+            }
+        };
         Ok(meetings)
     }
 
@@ -62,7 +77,7 @@ impl MeetingsRepository {
 
         // Get meeting details
         let meeting: Option<MeetingModel> =
-            sqlx::query_as("SELECT id, title, created_at, updated_at, folder_path FROM meetings WHERE id = ?")
+            sqlx::query_as("SELECT id, title, created_at, updated_at, folder_path, project_id FROM meetings WHERE id = ?")
                 .bind(meeting_id)
                 .fetch_optional(&mut *transaction)
                 .await?;
@@ -100,6 +115,7 @@ impl MeetingsRepository {
                 title: meeting.title,
                 created_at: meeting.created_at.0.to_rfc3339(),
                 updated_at: meeting.updated_at.0.to_rfc3339(),
+                project_id: meeting.project_id,
                 transcripts: meeting_transcripts,
             }))
         } else {
@@ -120,7 +136,7 @@ impl MeetingsRepository {
         }
 
         let meeting: Option<MeetingModel> =
-            sqlx::query_as("SELECT id, title, created_at, updated_at, folder_path FROM meetings WHERE id = ?")
+            sqlx::query_as("SELECT id, title, created_at, updated_at, folder_path, project_id FROM meetings WHERE id = ?")
                 .bind(meeting_id)
                 .fetch_optional(pool)
                 .await?;
