@@ -14,7 +14,7 @@ import {
   ragService,
 } from '@/services/ragService';
 
-const FACT_STYLES: Record<FactType, { label: string; className: string }> = {
+export const FACT_STYLES: Record<FactType, { label: string; className: string }> = {
   blocker: { label: 'Blocker', className: 'bg-red-100 text-red-700' },
   status: { label: 'Status', className: 'bg-blue-100 text-blue-700' },
   decision: { label: 'Decision', className: 'bg-green-100 text-green-700' },
@@ -23,7 +23,7 @@ const FACT_STYLES: Record<FactType, { label: string; className: string }> = {
 
 type Tab = 'tickets' | 'decision' | 'action';
 
-function FactBadge({ type }: { type: FactType }) {
+export function FactBadge({ type }: { type: FactType }) {
   const style = FACT_STYLES[type] ?? FACT_STYLES.status;
   return <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${style.className}`}>{style.label}</span>;
 }

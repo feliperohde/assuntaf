@@ -174,6 +174,10 @@ impl ProjectsRepository {
             .bind(project_id)
             .execute(&mut *tx)
             .await?;
+        sqlx::query("DELETE FROM ask_history WHERE project_id = ?")
+            .bind(project_id)
+            .execute(&mut *tx)
+            .await?;
 
         sqlx::query("DELETE FROM project_members WHERE project_id = ?")
             .bind(project_id)

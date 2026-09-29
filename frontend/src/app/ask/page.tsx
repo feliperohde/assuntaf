@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { Suspense, useEffect, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { MessageSquareText, Send, Loader2, AlertTriangle, Trash2 } from 'lucide-react';
@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useProject } from '@/contexts/ProjectContext';
 import { useSidebar } from '@/components/Sidebar/SidebarProvider';
-import { Answer, ConversationTurn, formatTimestamp, ragService } from '@/services/ragService';
+import { ASK_HISTORY_EVENT, Answer, ConversationTurn, formatTimestamp, ragService } from '@/services/ragService';
 
 interface Message {
   question: string;
@@ -25,9 +25,11 @@ const EXAMPLES = [
 
 const KIND_LABELS: Record<string, string> = { transcript: 'Transcript', summary: 'Summary', notes: 'Notes', fact: 'Recorded fact' };
 
-export default function AskPage() {
+function AskContent() {
   const router = useRouter();
-  const { activeProject, activeProjectId } = useProject();
+  const searchParams = useSearchParams();
+  const historyId = searchParams.get('history');
+  const { activeProject, activeProjectId, setActiveProjectId } = useProject();
   const { setCurrentMeeting } = useSidebar();
   // Conversation per project, kept for this session
   const [conversations, setConversations] = useState<Record<string, Message[]>>({});
@@ -40,6 +42,29 @@ export default function AskPage() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length, loading]);
+
+  // Reopen a saved answer picked from the history (sidebar or Knowledge page)
+  useEffect(() => {
+    if (!historyId) return;
+    let cancelled = false;
+    ragService
+      .askHistoryItem(historyId)
+      .then(item => {
+        if (cancelled || !item) return;
+        if (item.projectId !== activeProjectId) setActiveProjectId(item.projectId);
+        setConversations(prev => {
+          const list = prev[item.projectId] ?? [];
+          if (list.some(m => m.answer?.historyId === item.id)) return prev;
+          return { ...prev, [item.projectId]: [...list, { question: item.question, answer: { ...item.answer, historyId: item.id } }] };
+        });
+      })
+      .catch(error => console.error('Failed to load saved answer:', error));
+    return () => {
+      cancelled = true;
+    };
+    // Only when a different entry is requested
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyId]);
 
   const setMessages = (update: (prev: Message[]) => Message[]) =>
     setConversations(prev => ({ ...prev, [activeProjectId]: update(prev[activeProjectId] ?? []) }));
@@ -57,6 +82,7 @@ export default function AskPage() {
     setMessages(prev => [...prev, { question: q }]);
     try {
       const answer = await ragService.ask(projectId, q, history);
+      window.dispatchEvent(new Event(ASK_HISTORY_EVENT));
       setConversations(prev => {
         const list = [...(prev[projectId] ?? [])];
         list[list.length - 1] = { question: q, answer };
@@ -92,7 +118,10 @@ export default function AskPage() {
             </p>
           </div>
           {messages.length > 0 && (
-            <Button variant="ghost" size="sm" onClick={() => setMessages(() => [])} disabled={loading}>
+            <Button variant="ghost" size="sm" onClick={() => {
+                setMessages(() => []);
+                if (historyId) router.replace('/ask');
+              }} disabled={loading}>
               <Trash2 className="w-4 h-4 mr-2" /> Clear
             </Button>
           )}
@@ -213,5 +242,13 @@ export default function AskPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function AskPage() {
+  return (
+    <Suspense fallback={<div className="h-screen bg-gray-50" />}>
+      <AskContent />
+    </Suspense>
   );
 }

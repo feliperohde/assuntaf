@@ -116,6 +116,30 @@ export interface Answer {
   plan: QueryPlan;
   filtersRelaxed: boolean;
   notice: string | null;
+  /** Id of the saved history entry, when the answer was stored. */
+  historyId: string | null;
+}
+
+export interface Page<T> {
+  items: T[];
+  total: number;
+}
+
+export interface AskHistoryEntry {
+  id: string;
+  question: string;
+  found: boolean;
+  citationCount: number;
+  createdAt: string;
+  answerPreview: string;
+}
+
+export interface AskHistoryItem {
+  id: string;
+  projectId: string;
+  question: string;
+  createdAt: string;
+  answer: Answer;
 }
 
 export interface ConversationTurn {
@@ -148,7 +172,18 @@ export const ragService = {
     invoke<Fact[]>('rag_list_facts', { projectId, factType, limit: limit ?? null }),
   ask: (projectId: string, question: string, history: ConversationTurn[]) =>
     invoke<Answer>('rag_ask', { request: { projectId, question, history } }),
+  askHistory: (projectId: string, limit: number, offset = 0) =>
+    invoke<Page<AskHistoryEntry>>('rag_ask_history', { projectId, limit, offset }),
+  askHistoryItem: (id: string) => invoke<AskHistoryItem | null>('rag_ask_history_item', { id }),
+  deleteAskHistory: (id: string) => invoke<boolean>('rag_delete_ask_history', { id }),
+  ticketsPage: (projectId: string, limit: number, offset = 0) =>
+    invoke<Page<TicketSummary>>('rag_tickets_page', { projectId, limit, offset }),
+  factsPage: (projectId: string, factType: FactType, limit: number, offset = 0) =>
+    invoke<Page<Fact>>('rag_facts_page', { projectId, factType, limit, offset }),
 };
+
+/** Fired in the webview after a question is answered, so history lists refresh. */
+export const ASK_HISTORY_EVENT = 'assunta:ask-history-changed';
 
 /** Formats seconds as m:ss / h:mm:ss for citations. */
 export function formatTimestamp(seconds: number | null): string | null {
