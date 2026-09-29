@@ -12,6 +12,7 @@ export interface RagConfig {
   embeddingProvider: string;
   embeddingModel: string;
   ollamaEndpoint: string | null;
+  extractFacts: boolean;
 }
 
 export interface ProjectIndexStatus {
@@ -31,6 +32,8 @@ export interface IndexOutcome {
   chunkCount: number;
   embeddedCount: number;
   error: string | null;
+  factCount: number | null;
+  factsError: string | null;
 }
 
 export interface SearchResult {
@@ -66,7 +69,7 @@ export interface Citation {
   meetingId: string;
   meetingTitle: string;
   meetingDate: string;
-  kind: 'transcript' | 'summary' | 'notes';
+  kind: 'transcript' | 'summary' | 'notes' | 'fact';
   startTime: number | null;
   endTime: number | null;
   excerpt: string;
@@ -77,6 +80,32 @@ export interface QueryPlan {
   dateFrom: string | null;
   dateTo: string | null;
   meetingId: string | null;
+  tickets: string[];
+  factTypes: string[];
+}
+
+export type FactType = 'status' | 'blocker' | 'decision' | 'action';
+
+export interface Fact {
+  id: string;
+  ticket: string | null;
+  factType: FactType;
+  content: string;
+  owner: string | null;
+  meetingId: string;
+  meetingTitle: string;
+  meetingDate: string;
+  startTime: number | null;
+  chunkId: string | null;
+}
+
+export interface TicketSummary {
+  entityId: string;
+  key: string;
+  factCount: number;
+  lastMeetingDate: string;
+  latestFactType: FactType;
+  latestContent: string;
 }
 
 export interface Answer {
@@ -102,6 +131,10 @@ export const ragService = {
   indexMeeting: (meetingId: string) => invoke<IndexOutcome | null>('rag_index_meeting', { meetingId }),
   reindexProject: (projectId: string) => invoke<number>('rag_reindex_project', { projectId }),
   search: (request: SearchRequest) => invoke<SearchResponse>('rag_search', { request }),
+  listTickets: (projectId: string) => invoke<TicketSummary[]>('rag_list_tickets', { projectId }),
+  ticketFacts: (entityId: string) => invoke<Fact[]>('rag_ticket_facts', { entityId }),
+  listFacts: (projectId: string, factType: FactType, limit?: number) =>
+    invoke<Fact[]>('rag_list_facts', { projectId, factType, limit: limit ?? null }),
   ask: (projectId: string, question: string, history: ConversationTurn[]) =>
     invoke<Answer>('rag_ask', { request: { projectId, question, history } }),
 };

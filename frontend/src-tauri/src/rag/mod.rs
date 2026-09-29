@@ -7,6 +7,7 @@ pub mod answer;
 pub mod chunker;
 pub mod commands;
 pub mod embeddings;
+pub mod entities;
 pub mod indexer;
 pub mod llm;
 pub mod retriever;

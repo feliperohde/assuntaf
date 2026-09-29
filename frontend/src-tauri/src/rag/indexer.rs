@@ -11,6 +11,8 @@ use tokio::sync::Mutex;
 
 use super::chunker::{chunk_markdown, chunk_transcript, ChunkOptions, Segment};
 use super::embeddings::{EmbeddingProvider, OllamaEmbedder};
+use super::entities::extract_meeting_facts;
+use super::llm::ConfiguredChatModel;
 use super::store::{MeetingRef, NewChunk, RagConfig, RagStore};
 use crate::database::repositories::setting::SettingsRepository;
 use crate::state::AppState;
@@ -28,6 +30,9 @@ pub struct IndexOutcome {
     pub chunk_count: usize,
     pub embedded_count: usize,
     pub error: Option<String>,
+    /// Facts extracted (tickets, decisions, actions); None when extraction didn't run.
+    pub fact_count: Option<usize>,
+    pub facts_error: Option<String>,
 }
 
 /// Creates the configured embedding provider. The endpoint falls back to the
@@ -214,6 +219,8 @@ pub async fn index_meeting(
         chunk_count: chunks.len(),
         embedded_count,
         error: embed_error,
+        fact_count: None,
+        facts_error: None,
     })
 }
 
@@ -240,9 +247,26 @@ pub async fn index_meeting_with_app<R: Runtime>(app: &AppHandle<R>, meeting_id: 
                 chunk_count: 0,
                 embedded_count: 0,
                 error: Some(e.to_string()),
+                fact_count: None,
+                facts_error: None,
             }
         }
     };
+
+    let mut outcome = outcome;
+    if config.extract_facts && outcome.status != "error" && outcome.chunk_count > 0 {
+        let result = match ConfiguredChatModel::from_settings(&pool, app.path().app_data_dir().ok()).await {
+            Ok(llm) => extract_meeting_facts(&pool, &llm, meeting_id).await,
+            Err(e) => Err(e),
+        };
+        match result {
+            Ok(count) => outcome.fact_count = Some(count),
+            Err(e) => {
+                log::warn!("RAG: fact extraction failed for meeting {}: {}", meeting_id, e);
+                outcome.facts_error = Some(e.to_string());
+            }
+        }
+    }
     let _ = app.emit("rag-index-progress", &outcome);
     Ok(Some(outcome))
 }
