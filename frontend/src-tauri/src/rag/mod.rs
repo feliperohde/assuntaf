@@ -3,10 +3,12 @@
 //! ingestion/chunking (`chunker`) → embeddings (`embeddings`) → storage + FTS
 //! (`store`) → hybrid retrieval (`retriever`), orchestrated by `indexer`.
 
+pub mod answer;
 pub mod chunker;
 pub mod commands;
 pub mod embeddings;
 pub mod indexer;
+pub mod llm;
 pub mod retriever;
 pub mod store;
 

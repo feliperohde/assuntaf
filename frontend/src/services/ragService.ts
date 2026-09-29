@@ -60,6 +60,39 @@ export interface SearchRequest {
   limit?: number;
 }
 
+export interface Citation {
+  index: number;
+  chunkId: string;
+  meetingId: string;
+  meetingTitle: string;
+  meetingDate: string;
+  kind: 'transcript' | 'summary' | 'notes';
+  startTime: number | null;
+  endTime: number | null;
+  excerpt: string;
+}
+
+export interface QueryPlan {
+  searchQuery: string;
+  dateFrom: string | null;
+  dateTo: string | null;
+  meetingId: string | null;
+}
+
+export interface Answer {
+  answer: string;
+  found: boolean;
+  citations: Citation[];
+  plan: QueryPlan;
+  filtersRelaxed: boolean;
+  notice: string | null;
+}
+
+export interface ConversationTurn {
+  question: string;
+  answer: string;
+}
+
 export const RAG_INDEX_EVENT = 'rag-index-progress';
 
 export const ragService = {
@@ -69,6 +102,8 @@ export const ragService = {
   indexMeeting: (meetingId: string) => invoke<IndexOutcome | null>('rag_index_meeting', { meetingId }),
   reindexProject: (projectId: string) => invoke<number>('rag_reindex_project', { projectId }),
   search: (request: SearchRequest) => invoke<SearchResponse>('rag_search', { request }),
+  ask: (projectId: string, question: string, history: ConversationTurn[]) =>
+    invoke<Answer>('rag_ask', { request: { projectId, question, history } }),
 };
 
 /** Formats seconds as m:ss / h:mm:ss for citations. */

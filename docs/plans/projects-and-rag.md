@@ -193,7 +193,10 @@ depende de crates do screenpipe) — serve só de referência. Implementação n
   busca na página do projeto (PR #1)
 - [ ] Fase 3 — Diarização
 - [ ] Fase 4 — Entidades e fatos
-- [ ] Fase 5 — Perguntas e respostas com citações
+- [x] Fase 5 — Perguntas e respostas com citações (`rag/answer.rs`, página *Ask*): planner via LLM
+  (consulta + filtros de data/reunião), busca híbrida com relaxamento de filtros, bloqueio sem evidência
+  e resposta citando trechos [n] com reunião, data e minuto. Ainda sem streaming, sem histórico
+  persistido e sem abrir o áudio no minuto citado.
 
 ## Ordem de entrega sugerida
 

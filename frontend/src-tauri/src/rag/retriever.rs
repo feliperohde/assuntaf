@@ -12,6 +12,9 @@ use super::store::{ChunkHit, RagStore, SearchFilters};
 const RRF_K: f64 = 60.0;
 /// Candidates taken from each retriever before fusion.
 const CANDIDATES_PER_RETRIEVER: usize = 20;
+/// Cosine similarity below which a passage is considered unrelated. Deliberately
+/// low: it only drops clear noise; the answer step judges relevance beyond that.
+const MIN_VECTOR_SIMILARITY: f64 = 0.3;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -81,6 +84,7 @@ pub async fn hybrid_search(
                 embedder.model_id(),
                 filters,
                 CANDIDATES_PER_RETRIEVER,
+                MIN_VECTOR_SIMILARITY,
             )
             .await?;
             (hits, None)

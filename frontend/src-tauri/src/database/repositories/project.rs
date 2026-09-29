@@ -233,10 +233,18 @@ impl ProjectsRepository {
         let Some(project_id) = project_id.and_then(|(id,)| id) else {
             return Ok(None);
         };
-        let Some(project) = Self::get_project(pool, &project_id).await? else {
+        Self::project_context(pool, &project_id).await
+    }
+
+    /// Plain-text description of a project for LLM background context.
+    pub async fn project_context(
+        pool: &SqlitePool,
+        project_id: &str,
+    ) -> Result<Option<String>, SqlxError> {
+        let Some(project) = Self::get_project(pool, project_id).await? else {
             return Ok(None);
         };
-        let members = Self::list_members(pool, &project_id).await?;
+        let members = Self::list_members(pool, project_id).await?;
         Ok(format_project_context(&project, &members))
     }
 
