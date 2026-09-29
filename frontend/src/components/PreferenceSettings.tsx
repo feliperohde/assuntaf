@@ -9,6 +9,7 @@ import AnalyticsConsentSwitch from "./AnalyticsConsentSwitch"
 import { useConfig, NotificationSettings } from "@/contexts/ConfigContext"
 import { useI18n } from "@/i18n"
 import { UiLanguageSelect } from "@/i18n/UiLanguageSelect"
+import { MyProfileSettings } from "./MyProfileSettings"
 
 export function PreferenceSettings() {
   const { t } = useI18n();
@@ -154,6 +155,11 @@ export function PreferenceSettings() {
       {/* App language */}
       <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
         <UiLanguageSelect />
+      </div>
+
+      {/* The user (labels their lines; My time) */}
+      <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
+        <MyProfileSettings />
       </div>
 
       {/* Notifications Section */}

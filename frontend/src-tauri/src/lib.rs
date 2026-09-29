@@ -53,6 +53,7 @@ pub mod openrouter;
 pub mod parakeet_engine;
 pub mod projects;
 pub mod rag;
+pub mod me;
 pub mod state;
 pub mod summary;
 pub mod tray;
@@ -650,6 +651,10 @@ pub fn run() {
             diarization::commands::diarize_meeting,
             diarization::commands::list_meeting_speakers,
             diarization::commands::update_meeting_speaker,
+            me::commands::get_user_profile,
+            me::commands::set_user_display_name,
+            me::commands::set_meeting_speaker_is_me,
+            me::commands::my_time_report,
             diarization::commands::infer_speaker_names,
             diarization::commands::merge_meeting_speakers,
             analytics::commands::init_analytics,

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { ChevronDown, ChevronRight, File, Settings, ChevronLeftCircle, ChevronRightCircle, Calendar, StickyNote, Home, Trash2, Mic, Square, Plus, Search, Pencil, NotebookPen, SearchIcon, X, Upload, FolderKanban, FolderInput, MessageSquareText, DatabaseZap, Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, File, Settings, ChevronLeftCircle, ChevronRightCircle, Calendar, StickyNote, Home, Trash2, Mic, Square, Plus, Search, Pencil, NotebookPen, SearchIcon, X, Upload, FolderKanban, FolderInput, MessageSquareText, DatabaseZap, Loader2, Timer } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useSidebar } from './SidebarProvider';
 import type { CurrentMeeting } from '@/components/Sidebar/SidebarProvider';
@@ -659,6 +659,20 @@ const Sidebar: React.FC = () => {
           <Tooltip>
             <TooltipTrigger asChild>
               <button
+                onClick={() => router.push('/my-time')}
+                className={`p-2 rounded-lg transition-colors duration-150 ${pathname === '/my-time' ? 'bg-gray-100' : 'hover:bg-gray-100'}`}
+              >
+                <Timer className="w-5 h-5 text-gray-600" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              <p>{t('nav.myTime')}</p>
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
                 onClick={() => router.push('/projects')}
                 className={`p-2 rounded-lg transition-colors duration-150 ${isProjectsPage ? 'bg-gray-100' : 'hover:bg-gray-100'
                   }`}
@@ -939,6 +953,15 @@ const Sidebar: React.FC = () => {
               >
                 <MessageSquareText className="w-4 h-4 mr-2" />
                 <span>{t('nav.ask')}</span>
+              </div>
+            )}
+            {!isCollapsed && (
+              <div
+                onClick={() => router.push('/my-time')}
+                className={`p-3 text-lg font-semibold items-center h-10 flex mx-3 mt-1 rounded-lg cursor-pointer ${pathname === '/my-time' ? 'bg-gray-100' : 'hover:bg-gray-100'}`}
+              >
+                <Timer className="w-4 h-4 mr-2" />
+                <span>{t('nav.myTime')}</span>
               </div>
             )}
             {!isCollapsed && (

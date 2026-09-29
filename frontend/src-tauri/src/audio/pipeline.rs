@@ -790,6 +790,7 @@ impl AudioPipeline {
 
     /// Run the VAD-driven audio processing pipeline
     pub async fn run(mut self) -> Result<()> {
+        super::voice_activity::reset();
         info!("VAD-driven audio pipeline started - segments sent in real-time based on speech detection");
 
         // CRITICAL FIX: Continue processing until channel is closed, not based on recording state
@@ -847,6 +848,8 @@ impl AudioPipeline {
                     // STEP 2: Mix audio in fixed windows when both streams have sufficient data
                     while self.ring_buffer.can_mix() {
                         if let Some((mic_window, sys_window)) = self.ring_buffer.extract_window() {
+                            // Who is talking (mic = the user, system = others), before mixing
+                            super::voice_activity::record_window(&mic_window, &sys_window, self.sample_rate);
                             // Simple mixing without aggressive ducking
                             let mixed_clean = self.mixer.mix_window(&mic_window, &sys_window);
 
