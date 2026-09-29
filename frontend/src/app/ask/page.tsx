@@ -27,6 +27,7 @@ function AskContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const historyId = searchParams.get('history');
+  const initialQuestion = searchParams.get('q');
   const { activeProject, activeProjectId, setActiveProjectId } = useProject();
   const { setCurrentMeeting } = useSidebar();
   // Conversation per project, kept for this session
@@ -63,6 +64,16 @@ function AskContent() {
     // Only when a different entry is requested
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [historyId]);
+
+  // A question sent from elsewhere (Home) is asked once, then dropped from the URL
+  const askedInitial = useRef<string | null>(null);
+  useEffect(() => {
+    if (!initialQuestion || !activeProjectId || askedInitial.current === initialQuestion) return;
+    askedInitial.current = initialQuestion;
+    router.replace('/ask');
+    ask(initialQuestion);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialQuestion, activeProjectId]);
 
   const setMessages = (update: (prev: Message[]) => Message[]) =>
     setConversations(prev => ({ ...prev, [activeProjectId]: update(prev[activeProjectId] ?? []) }));
