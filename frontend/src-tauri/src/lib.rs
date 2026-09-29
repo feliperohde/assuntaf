@@ -41,6 +41,7 @@ pub mod audio;
 pub mod config;
 pub mod console_utils;
 pub mod database;
+pub mod diarization;
 pub mod notifications;
 pub mod ollama;
 pub mod onboarding;
@@ -638,6 +639,9 @@ pub fn run() {
             rag::commands::rag_list_tickets,
             rag::commands::rag_ticket_facts,
             rag::commands::rag_list_facts,
+            diarization::commands::diarize_meeting,
+            diarization::commands::list_meeting_speakers,
+            diarization::commands::update_meeting_speaker,
             analytics::commands::init_analytics,
             analytics::commands::disable_analytics,
             analytics::commands::track_event,

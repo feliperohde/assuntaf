@@ -222,6 +222,11 @@ impl ProjectsRepository {
             .bind(meeting_id)
             .execute(&mut *tx)
             .await?;
+        // Speakers keep their labels but lose links to the old project's members
+        sqlx::query("UPDATE meeting_speakers SET member_id = NULL WHERE meeting_id = ?")
+            .bind(meeting_id)
+            .execute(&mut *tx)
+            .await?;
         if let Some(old_project) = old_project.and_then(|(p,)| p) {
             crate::rag::entities::delete_orphan_entities(&mut *tx, &old_project).await?;
         }

@@ -90,7 +90,12 @@ impl MeetingsRepository {
         if let Some(meeting) = meeting {
             // Get all transcripts for this meeting
             let transcripts =
-                sqlx::query_as::<_, Transcript>("SELECT * FROM transcripts WHERE meeting_id = ?")
+                sqlx::query_as::<_, Transcript>(
+                    "SELECT t.*, COALESCE(pm.name, s.label) AS speaker_name FROM transcripts t
+                     LEFT JOIN meeting_speakers s ON s.id = t.speaker_id
+                     LEFT JOIN project_members pm ON pm.id = s.member_id
+                     WHERE t.meeting_id = ?",
+                )
                     .bind(meeting_id)
                     .fetch_all(&mut *transaction)
                     .await?;
@@ -107,6 +112,7 @@ impl MeetingsRepository {
                     audio_start_time: t.audio_start_time,
                     audio_end_time: t.audio_end_time,
                     duration: t.duration,
+                    speaker: t.speaker_name,
                 })
                 .collect::<Vec<_>>();
 
@@ -167,9 +173,11 @@ impl MeetingsRepository {
 
         // Get paginated transcripts ordered by audio_start_time
         let transcripts = sqlx::query_as::<_, Transcript>(
-            "SELECT * FROM transcripts
-             WHERE meeting_id = ?
-             ORDER BY audio_start_time ASC
+            "SELECT t.*, COALESCE(pm.name, s.label) AS speaker_name FROM transcripts t
+             LEFT JOIN meeting_speakers s ON s.id = t.speaker_id
+             LEFT JOIN project_members pm ON pm.id = s.member_id
+             WHERE t.meeting_id = ?
+             ORDER BY t.audio_start_time ASC
              LIMIT ? OFFSET ?"
         )
         .bind(meeting_id)
@@ -295,6 +303,10 @@ async fn delete_meeting_with_transaction(
             .fetch_optional(&mut *transaction)
             .await?;
     sqlx::query("DELETE FROM entity_facts WHERE meeting_id = ?")
+        .bind(meeting_id)
+        .execute(&mut *transaction)
+        .await?;
+    sqlx::query("DELETE FROM meeting_speakers WHERE meeting_id = ?")
         .bind(meeting_id)
         .execute(&mut *transaction)
         .await?;

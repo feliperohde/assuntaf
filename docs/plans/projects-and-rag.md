@@ -191,7 +191,10 @@ depende de crates do screenpipe) — serve só de referência. Implementação n
 - [x] Fase 2 — Indexação (`src-tauri/src/rag/`): chunking por janela de tempo, embeddings via Ollama,
   FTS5, busca híbrida com RRF, reindexação por projeto, aba *Knowledge* nas configurações e painel de
   busca na página do projeto (PR #1)
-- [ ] Fase 3 — Diarização
+- [x] Fase 3 — Diarização (`src-tauri/src/diarization/`): segmentação pyannote 3.0 + embeddings CAM++
+  (ONNX, modelos baixados sob demanda), clustering aglomerativo, atribuição por sobreposição aos trechos
+  da transcrição, reconhecimento de membros por voiceprint aprendido ao vincular falantes; nomes aparecem
+  na transcrição e nos trechos indexados ("Ana: …")
 - [x] Fase 4 — Entidades e fatos (`rag/entities.rs`): após indexar, o LLM de resumo extrai status, bloqueios,
   decisões e ações (com o trecho de origem); tickets reconhecidos pelos padrões do projeto; fatos entram como
   evidência prioritária no *Ask* e aparecem nas abas Tickets / Decisions / Action items do projeto

@@ -13,6 +13,7 @@ export interface RagConfig {
   embeddingModel: string;
   ollamaEndpoint: string | null;
   extractFacts: boolean;
+  autoDiarize: boolean;
 }
 
 export interface ProjectIndexStatus {

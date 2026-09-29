@@ -37,6 +37,9 @@ pub struct Transcript {
     pub audio_start_time: Option<f64>,
     pub audio_end_time: Option<f64>,
     pub duration: Option<f64>,
+    /// Display name of the diarized speaker (member name or "Speaker N"), when queried with the join
+    #[sqlx(default)]
+    pub speaker_name: Option<String>,
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
