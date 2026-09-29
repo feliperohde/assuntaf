@@ -366,6 +366,32 @@ pub fn schedule_meeting_index<R: Runtime>(app: AppHandle<R>, meeting_id: String)
     schedule_meeting_index_with(app, meeting_id, IndexOptions::default());
 }
 
+/// Extracts tickets/decisions/actions for a meeting that was just indexed, in
+/// the background (it calls the summary LLM), then emits `rag-index-progress`
+/// again with the fact count.
+pub fn schedule_fact_extraction<R: Runtime>(app: AppHandle<R>, mut outcome: IndexOutcome) {
+    tauri::async_runtime::spawn(async move {
+        let Some(state) = app.try_state::<AppState>() else { return };
+        let pool = state.db_manager.pool().clone();
+        match RagStore::get_config(&pool).await {
+            Ok(config) if config.extract_facts => {}
+            _ => return,
+        }
+        let result = match ConfiguredChatModel::from_settings(&pool, app.path().app_data_dir().ok()).await {
+            Ok(llm) => extract_meeting_facts(&pool, &llm, &outcome.meeting_id).await,
+            Err(e) => Err(e),
+        };
+        match result {
+            Ok(count) => outcome.fact_count = Some(count),
+            Err(e) => {
+                log::warn!("RAG: fact extraction failed for meeting {}: {}", outcome.meeting_id, e);
+                outcome.facts_error = Some(e.to_string());
+            }
+        }
+        let _ = app.emit("rag-index-progress", &outcome);
+    });
+}
+
 pub fn schedule_meeting_index_with<R: Runtime>(app: AppHandle<R>, meeting_id: String, options: IndexOptions) {
     tauri::async_runtime::spawn(async move {
         if let Err(e) = index_meeting_with_options(&app, &meeting_id, options).await {

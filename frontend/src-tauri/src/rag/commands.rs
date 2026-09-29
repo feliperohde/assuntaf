@@ -6,7 +6,10 @@ use super::answer::{ask_project_with, Answer, ConversationTurn};
 use super::entities::{facts_by_type, facts_page, list_tickets, ticket_facts, tickets_page, FactRow, TicketSummary};
 use super::history::{self, AskHistoryEntry, AskHistoryItem, Page};
 use super::embeddings::{probe_ollama, OllamaProbe};
-use super::indexer::{embedder_from_config, index_meeting_with_app, resolve_endpoint, IndexOutcome};
+use super::indexer::{
+    embedder_from_config, index_meeting_with_app, index_meeting_with_options, resolve_endpoint, schedule_fact_extraction,
+    IndexOptions, IndexOutcome,
+};
 use super::llm::ConfiguredChatModel;
 use super::retriever::{hybrid_search_with, SearchResponse};
 use super::qdrant::{probe as probe_qdrant, QdrantProbe};
@@ -52,14 +55,25 @@ pub async fn rag_index_status(
         .map_err(|e| err("load index status", e))
 }
 
+/// Reindexes one meeting now ("Reindex" in the UI): passages are searchable when
+/// this returns; speaker detection is skipped and fact extraction continues in
+/// the background (another `rag-index-progress` event when it finishes).
+/// Returns None when the knowledge index is disabled.
 #[tauri::command]
 pub async fn rag_index_meeting<R: Runtime>(
     app: AppHandle<R>,
     meeting_id: String,
 ) -> Result<Option<IndexOutcome>, String> {
-    index_meeting_with_app(&app, &meeting_id)
+    let options = IndexOptions { diarize: false, extract_facts: false };
+    let outcome = index_meeting_with_options(&app, &meeting_id, options)
         .await
-        .map_err(|e| err("index meeting", e))
+        .map_err(|e| err("index meeting", e))?;
+    if let Some(outcome) = &outcome {
+        if outcome.status != "error" && outcome.chunk_count > 0 {
+            schedule_fact_extraction(app.clone(), outcome.clone());
+        }
+    }
+    Ok(outcome)
 }
 
 /// Reindexes every meeting of a project in the background; progress arrives as
