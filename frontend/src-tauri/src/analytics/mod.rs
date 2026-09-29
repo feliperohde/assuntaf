@@ -1,4 +1,5 @@
 pub mod analytics;
+pub mod ga4;
 pub mod commands;
 
 pub use analytics::*;
