@@ -76,7 +76,7 @@ pub async fn probe_ollama(endpoint: Option<&str>, model: &str) -> OllamaProbe {
 
     let endpoint = normalize_endpoint(endpoint);
     let result = async {
-        let response = reqwest::Client::new()
+        let response = crate::net::client_for(&endpoint)
             .get(format!("{endpoint}/api/tags"))
             .timeout(Duration::from_secs(5))
             .send()
@@ -107,6 +107,17 @@ pub async fn probe_ollama(endpoint: Option<&str>, model: &str) -> OllamaProbe {
     }
 }
 
+/// The innermost error message (e.g. "Connection refused (os error 61)",
+/// "No route to host (os error 65)"), which tells apart a stopped server, a
+/// firewall and a blocked Local Network permission.
+fn root_cause(e: &reqwest::Error) -> String {
+    let mut source: &dyn std::error::Error = e;
+    while let Some(next) = source.source() {
+        source = next;
+    }
+    source.to_string()
+}
+
 fn connection_error(endpoint: &str, e: &reqwest::Error) -> anyhow::Error {
     if e.is_connect() || e.is_timeout() {
         let lan_hint = if cfg!(target_os = "macos") && !endpoint.contains("localhost") && !endpoint.contains("127.0.0.1") {
@@ -115,8 +126,9 @@ fn connection_error(endpoint: &str, e: &reqwest::Error) -> anyhow::Error {
             ""
         };
         anyhow!(
-            "Cannot connect to Ollama at {endpoint}. Is it running and reachable? \
-             (a remote Ollama must listen on the network: OLLAMA_HOST=0.0.0.0){lan_hint}"
+            "Cannot connect to Ollama at {endpoint}: {cause}. Is it running and reachable? \
+             (a remote Ollama must listen on the network: OLLAMA_HOST=0.0.0.0){lan_hint}",
+            cause = root_cause(e)
         )
     } else {
         anyhow!("Ollama request to {endpoint} failed: {e}")
@@ -127,7 +139,7 @@ impl OllamaEmbedder {
     pub fn new(endpoint: Option<&str>, model: &str) -> Self {
         let endpoint = normalize_endpoint(endpoint);
         Self {
-            client: reqwest::Client::new(),
+            client: crate::net::client_for(&endpoint),
             endpoint,
             model: model.to_string(),
         }

@@ -37,7 +37,12 @@ impl ConfiguredChatModel {
         let provider = LLMProvider::from_str(&settings.provider).map_err(|e| anyhow!(e))?;
 
         let mut model = ConfiguredChatModel {
-            client: Client::new(),
+            client: match provider {
+                LLMProvider::Ollama => crate::net::client_for(
+                    settings.ollama_endpoint.as_deref().unwrap_or("http://localhost:11434"),
+                ),
+                _ => Client::new(),
+            },
             provider: provider.clone(),
             model: settings.model.clone(),
             api_key: String::new(),

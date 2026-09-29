@@ -3,7 +3,6 @@ use std::sync::Arc;
 use std::collections::HashSet;
 use serde::{Deserialize, Serialize};
 use tauri::{command, AppHandle, Emitter, Runtime};
-use reqwest::Client;
 use tokio::time::{timeout, Duration, sleep};
 use tokio::sync::RwLock;
 use futures_util::StreamExt;
@@ -159,8 +158,8 @@ async fn get_models_via_http_with_retry(endpoint: Option<&str>) -> Result<Vec<Ol
 }
 
 async fn get_models_via_http_async(endpoint: Option<&str>) -> Result<Vec<OllamaModel>, String> {
-    let client = Client::new();
     let base_url = endpoint.unwrap_or("http://localhost:11434");
+    let client = crate::net::client_for(base_url);
     let url = format!("{}/api/tags", base_url);
 
     let response = client
@@ -278,8 +277,8 @@ pub async fn pull_ollama_model<R: Runtime>(
         log::info!("Started download tracking for model: {}", model_name);
     }
 
-    let client = Client::new();
     let base_url = endpoint.as_deref().unwrap_or("http://localhost:11434");
+    let client = crate::net::client_for(base_url);
     let url = format!("{}/api/pull", base_url);
 
     let payload = serde_json::json!({
@@ -437,8 +436,8 @@ pub async fn delete_ollama_model(
     model_name: String,
     endpoint: Option<String>,
 ) -> Result<(), String> {
-    let client = Client::new();
     let base_url = endpoint.as_deref().unwrap_or("http://localhost:11434");
+    let client = crate::net::client_for(base_url);
     let url = format!("{}/api/delete", base_url);
 
     let payload = serde_json::json!({
