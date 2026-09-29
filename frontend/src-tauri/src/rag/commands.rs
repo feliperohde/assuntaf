@@ -112,7 +112,7 @@ pub async fn rag_search(
         date_to: request.date_to,
     };
     let limit = request.limit.unwrap_or(DEFAULT_SEARCH_LIMIT).clamp(1, MAX_SEARCH_LIMIT);
-    hybrid_search(pool, embedder.as_ref(), &request.project_id, request.query.trim(), &filters, limit)
+    hybrid_search(pool, embedder.as_ref(), Some(&request.project_id), request.query.trim(), &filters, limit)
         .await
         .map_err(|e| err("search", e))
 }
@@ -124,6 +124,9 @@ pub struct AskRequest {
     pub question: String,
     #[serde(default)]
     pub history: Vec<ConversationTurn>,
+    /// Search every project instead of `project_id` (history is still kept there).
+    #[serde(default)]
+    pub all_projects: bool,
 }
 
 /// Answers a question about a project's meetings, citing the passages used.
@@ -149,7 +152,7 @@ pub async fn rag_ask<R: Runtime>(
         pool,
         embedder.as_ref(),
         &llm,
-        &request.project_id,
+        (!request.all_projects).then_some(request.project_id.as_str()),
         &request.question,
         &request.history,
         chrono::Local::now().date_naive(),
@@ -157,7 +160,7 @@ pub async fn rag_ask<R: Runtime>(
     .await
     .map_err(|e| err("answer the question", e))?;
     // History is a convenience: a failed save must not lose the answer
-    match history::save(pool, &request.project_id, &request.question, &answer).await {
+    match history::save(pool, &request.project_id, &request.question, &answer, request.all_projects).await {
         Ok(id) => answer.history_id = Some(id),
         Err(e) => error!("RAG: failed to save question to history: {}", e),
     }
@@ -262,7 +265,7 @@ pub async fn rag_list_facts(
 ) -> Result<Vec<FactRow>, String> {
     facts_by_type(
         state.db_manager.pool(),
-        &project_id,
+        Some(&project_id),
         &[fact_type],
         None,
         None,

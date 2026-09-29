@@ -324,7 +324,7 @@ impl RagStore {
     /// ignoring chunks below `min_similarity` (so unrelated questions find nothing).
     pub async fn vector_search(
         pool: &SqlitePool,
-        project_id: &str,
+        project_id: Option<&str>,
         query_vector: &[f32],
         embedding_model: &str,
         filters: &SearchFilters,
@@ -333,11 +333,12 @@ impl RagStore {
     ) -> Result<Vec<ChunkHit>, SqlxError> {
         let rows: Vec<(String, Vec<u8>)> = sqlx::query_as(
             "SELECT c.id, c.embedding FROM rag_chunks c
-             WHERE c.project_id = ? AND c.embedding IS NOT NULL AND c.embedding_model = ?
+             WHERE (? IS NULL OR c.project_id = ?) AND c.embedding IS NOT NULL AND c.embedding_model = ?
                AND (? IS NULL OR c.meeting_id = ?)
                AND (? IS NULL OR c.meeting_date >= ?)
                AND (? IS NULL OR c.meeting_date < ?)",
         )
+        .bind(project_id)
         .bind(project_id)
         .bind(embedding_model)
         .bind(&filters.meeting_id)
@@ -363,10 +364,10 @@ impl RagStore {
         Self::hydrate(pool, scored).await
     }
 
-    /// Top-k chunks by BM25 over chunk text and meeting title.
+    /// Top-k chunks by BM25 over chunk text and meeting title (`project_id` None = all projects).
     pub async fn lexical_search(
         pool: &SqlitePool,
-        project_id: &str,
+        project_id: Option<&str>,
         query: &str,
         filters: &SearchFilters,
         k: usize,
@@ -377,13 +378,14 @@ impl RagStore {
         let rows: Vec<(String, f64)> = sqlx::query_as(
             "SELECT f.chunk_id, bm25(rag_chunks_fts) AS rank
              FROM rag_chunks_fts f JOIN rag_chunks c ON c.id = f.chunk_id
-             WHERE rag_chunks_fts MATCH ? AND c.project_id = ?
+             WHERE rag_chunks_fts MATCH ? AND (? IS NULL OR c.project_id = ?)
                AND (? IS NULL OR c.meeting_id = ?)
                AND (? IS NULL OR c.meeting_date >= ?)
                AND (? IS NULL OR c.meeting_date < ?)
              ORDER BY rank LIMIT ?",
         )
         .bind(&match_query)
+        .bind(project_id)
         .bind(project_id)
         .bind(&filters.meeting_id)
         .bind(&filters.meeting_id)

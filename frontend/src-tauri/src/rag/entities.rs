@@ -328,15 +328,16 @@ const FACT_SELECT: &str = "SELECT f.id, e.key AS ticket, f.fact_type, f.content,
 /// Facts about the given tickets, newest meeting first.
 pub async fn facts_for_tickets(
     pool: &SqlitePool,
-    project_id: &str,
+    project_id: Option<&str>,
     tickets: &[String],
     limit: usize,
 ) -> Result<Vec<FactRow>, sqlx::Error> {
     let mut rows = Vec::new();
     for ticket in tickets {
         let mut found: Vec<FactRow> = sqlx::query_as(&format!(
-            "{FACT_SELECT} WHERE f.project_id = ? AND e.key = ? ORDER BY f.meeting_date DESC, f.start_time DESC LIMIT ?"
+            "{FACT_SELECT} WHERE (? IS NULL OR f.project_id = ?) AND e.key = ? ORDER BY f.meeting_date DESC, f.start_time DESC LIMIT ?"
         ))
+        .bind(project_id)
         .bind(project_id)
         .bind(ticket)
         .bind(limit as i64)
@@ -352,7 +353,7 @@ pub async fn facts_for_tickets(
 /// Facts of the given types (e.g. decisions), newest first, within optional date/meeting bounds.
 pub async fn facts_by_type(
     pool: &SqlitePool,
-    project_id: &str,
+    project_id: Option<&str>,
     fact_types: &[String],
     meeting_id: Option<&str>,
     date_from: Option<&str>,
@@ -362,12 +363,13 @@ pub async fn facts_by_type(
     let mut rows = Vec::new();
     for fact_type in fact_types {
         let mut found: Vec<FactRow> = sqlx::query_as(&format!(
-            "{FACT_SELECT} WHERE f.project_id = ? AND f.fact_type = ?
+            "{FACT_SELECT} WHERE (? IS NULL OR f.project_id = ?) AND f.fact_type = ?
                AND (? IS NULL OR f.meeting_id = ?)
                AND (? IS NULL OR f.meeting_date >= ?)
                AND (? IS NULL OR f.meeting_date < ?)
              ORDER BY f.meeting_date DESC LIMIT ?"
         ))
+        .bind(project_id)
         .bind(project_id)
         .bind(fact_type)
         .bind(meeting_id)
@@ -586,7 +588,7 @@ mod tests {
         assert_eq!(extract_meeting_facts(&pool, &llm, "m1").await.unwrap(), 1); // duplicate dropped
         assert_eq!(extract_meeting_facts(&pool, &llm, "m2").await.unwrap(), 2);
 
-        let facts = facts_for_tickets(&pool, "p1", &["ABC-123".into()], 10).await.unwrap();
+        let facts = facts_for_tickets(&pool, Some("p1"), &["ABC-123".into()], 10).await.unwrap();
         assert_eq!(facts.len(), 2);
         assert_eq!(facts[0].meeting_id, "m2"); // newest first
         assert_eq!(facts[0].start_time, Some(60.0));
@@ -604,7 +606,7 @@ mod tests {
         let blockers = facts_page(&pool, "p1", "blocker", 10, 0).await.unwrap();
         assert_eq!((blockers.total, blockers.items.len()), (1, 1));
 
-        let decisions = facts_by_type(&pool, "p1", &["decision".into()], None, Some("2026-09-25"), None, 10)
+        let decisions = facts_by_type(&pool, Some("p1"), &["decision".into()], None, Some("2026-09-25"), None, 10)
             .await
             .unwrap();
         assert_eq!(decisions.len(), 1);

@@ -4,7 +4,7 @@ import React, { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { MessageSquareText, Send, Loader2, AlertTriangle, Trash2 } from 'lucide-react';
+import { MessageSquareText, Send, Loader2, AlertTriangle, Trash2, Globe, FolderKanban } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useProject } from '@/contexts/ProjectContext';
@@ -17,6 +17,8 @@ interface Message {
   answer?: Answer;
   error?: string;
 }
+
+const ALL_PROJECTS_KEY = '__all_projects__';
 
 const EXAMPLES: MessageKey[] = ['ask.example1', 'ask.example2', 'ask.example3'];
 
@@ -32,10 +34,13 @@ function AskContent() {
   // Conversation per project, kept for this session
   const [conversations, setConversations] = useState<Record<string, Message[]>>({});
   const [question, setQuestion] = useState('');
+  const [allProjects, setAllProjects] = useState(false);
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const messages = conversations[activeProjectId] ?? [];
+  // Answers from all projects are a separate conversation
+  const conversationKey = allProjects ? ALL_PROJECTS_KEY : activeProjectId;
+  const messages = conversations[conversationKey] ?? [];
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -50,10 +55,12 @@ function AskContent() {
       .then(item => {
         if (cancelled || !item) return;
         if (item.projectId !== activeProjectId) setActiveProjectId(item.projectId);
+        setAllProjects(item.allProjects);
+        const key = item.allProjects ? ALL_PROJECTS_KEY : item.projectId;
         setConversations(prev => {
-          const list = prev[item.projectId] ?? [];
+          const list = prev[key] ?? [];
           if (list.some(m => m.answer?.historyId === item.id)) return prev;
-          return { ...prev, [item.projectId]: [...list, { question: item.question, answer: { ...item.answer, historyId: item.id } }] };
+          return { ...prev, [key]: [...list, { question: item.question, answer: { ...item.answer, historyId: item.id } }] };
         });
       })
       .catch(error => console.error('Failed to load saved answer:', error));
@@ -65,12 +72,13 @@ function AskContent() {
   }, [historyId]);
 
   const setMessages = (update: (prev: Message[]) => Message[]) =>
-    setConversations(prev => ({ ...prev, [activeProjectId]: update(prev[activeProjectId] ?? []) }));
+    setConversations(prev => ({ ...prev, [conversationKey]: update(prev[conversationKey] ?? []) }));
 
   const ask = async (text: string) => {
     const q = text.trim();
     if (!q || loading) return;
     const projectId = activeProjectId;
+    const key = conversationKey;
     const history: ConversationTurn[] = messages
       .filter(m => m.answer?.found)
       .map(m => ({ question: m.question, answer: m.answer!.answer }));
@@ -79,18 +87,18 @@ function AskContent() {
     setLoading(true);
     setMessages(prev => [...prev, { question: q }]);
     try {
-      const answer = await ragService.ask(projectId, q, history);
+      const answer = await ragService.ask(projectId, q, history, allProjects);
       window.dispatchEvent(new Event(ASK_HISTORY_EVENT));
       setConversations(prev => {
-        const list = [...(prev[projectId] ?? [])];
+        const list = [...(prev[key] ?? [])];
         list[list.length - 1] = { question: q, answer };
-        return { ...prev, [projectId]: list };
+        return { ...prev, [key]: list };
       });
     } catch (error) {
       setConversations(prev => {
-        const list = [...(prev[projectId] ?? [])];
+        const list = [...(prev[key] ?? [])];
         list[list.length - 1] = { question: q, error: String(error) };
-        return { ...prev, [projectId]: list };
+        return { ...prev, [key]: list };
       });
     } finally {
       setLoading(false);
@@ -111,9 +119,30 @@ function AskContent() {
               <MessageSquareText className="w-7 h-7 text-gray-600" /> {t('nav.ask')}
             </h1>
             <p className="text-sm text-gray-500 mt-1">
-              {t('ask.subtitleBefore')}<span className="font-medium">{activeProject?.name ?? t('ask.thisProject')}</span>
-              {t('ask.subtitleAfter')}
+              {allProjects ? (
+                t('ask.subtitleAll')
+              ) : (
+                <>
+                  {t('ask.subtitleBefore')}<span className="font-medium">{activeProject?.name ?? t('ask.thisProject')}</span>
+                  {t('ask.subtitleAfter')}
+                </>
+              )}
             </p>
+            <div className="mt-3 inline-flex rounded-lg border border-gray-200 p-0.5 text-sm" role="radiogroup">
+              {[false, true].map(all => (
+                <button
+                  key={String(all)}
+                  role="radio"
+                  aria-checked={allProjects === all}
+                  onClick={() => setAllProjects(all)}
+                  disabled={loading}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-md transition-colors ${allProjects === all ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                >
+                  {all ? <Globe className="w-3.5 h-3.5" /> : <FolderKanban className="w-3.5 h-3.5" />}
+                  {all ? t('ask.scopeAll') : activeProject?.name ?? t('ask.scopeProject')}
+                </button>
+              ))}
+            </div>
           </div>
           {messages.length > 0 && (
             <Button variant="ghost" size="sm" onClick={() => {
@@ -197,6 +226,9 @@ function AskContent() {
                           >
                             <div className="flex items-center gap-2 text-xs text-gray-500">
                               <span className="font-semibold text-blue-600">[{citation.index}]</span>
+                              {citation.projectName && (
+                                <span className="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700">{citation.projectName}</span>
+                              )}
                               <span className="font-medium text-gray-800">{citation.meetingTitle}</span>
                               <span>· {citation.meetingDate.slice(0, 10)}</span>
                               {start && <span>· {start}</span>}
@@ -230,7 +262,7 @@ function AskContent() {
                 ask(question);
               }
             }}
-            placeholder={t('ask.placeholder')}
+            placeholder={allProjects ? t('ask.placeholderAll') : t('ask.placeholder')}
             className="resize-none"
           />
           <Button variant="blue" onClick={() => ask(question)} disabled={loading || !question.trim()} className="self-end">

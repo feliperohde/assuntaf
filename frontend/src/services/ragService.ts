@@ -74,6 +74,8 @@ export interface Citation {
   startTime: number | null;
   endTime: number | null;
   excerpt: string;
+  /** Set when the question searched all projects. */
+  projectName: string | null;
 }
 
 export interface QueryPlan {
@@ -131,6 +133,7 @@ export interface AskHistoryEntry {
   found: boolean;
   citationCount: number;
   createdAt: string;
+  allProjects: boolean;
   answerPreview: string;
 }
 
@@ -139,6 +142,7 @@ export interface AskHistoryItem {
   projectId: string;
   question: string;
   createdAt: string;
+  allProjects: boolean;
   answer: Answer;
 }
 
@@ -170,8 +174,8 @@ export const ragService = {
   ticketFacts: (entityId: string) => invoke<Fact[]>('rag_ticket_facts', { entityId }),
   listFacts: (projectId: string, factType: FactType, limit?: number) =>
     invoke<Fact[]>('rag_list_facts', { projectId, factType, limit: limit ?? null }),
-  ask: (projectId: string, question: string, history: ConversationTurn[]) =>
-    invoke<Answer>('rag_ask', { request: { projectId, question, history } }),
+  ask: (projectId: string, question: string, history: ConversationTurn[], allProjects = false) =>
+    invoke<Answer>('rag_ask', { request: { projectId, question, history, allProjects } }),
   askHistory: (projectId: string, limit: number, offset = 0) =>
     invoke<Page<AskHistoryEntry>>('rag_ask_history', { projectId, limit, offset }),
   askHistoryItem: (id: string) => invoke<AskHistoryItem | null>('rag_ask_history_item', { id }),

@@ -454,7 +454,7 @@ mod tests {
         assert!(outcome.chunk_count >= 3); // 3 one-minute segments → 2+ windows, plus summary
         assert_eq!(outcome.embedded_count, outcome.chunk_count);
 
-        let response = hybrid_search(&pool, &embedder, "p1", "ABC-123 bloqueado", &SearchFilters::default(), 5)
+        let response = hybrid_search(&pool, &embedder, Some("p1"), "ABC-123 bloqueado", &SearchFilters::default(), 5)
             .await
             .unwrap();
         assert!(response.vector_error.is_none());
@@ -465,12 +465,12 @@ mod tests {
 
         // Title matches are found lexically and follow renames
         RagStore::rename_meeting(&pool, "m1", "Planejamento trimestral").await.unwrap();
-        let by_title = RagStore::lexical_search(&pool, "p1", "trimestral", &SearchFilters::default(), 5)
+        let by_title = RagStore::lexical_search(&pool, Some("p1"), "trimestral", &SearchFilters::default(), 5)
             .await
             .unwrap();
         assert!(!by_title.is_empty());
 
-        let summary = hybrid_search(&pool, &embedder, "p1", "deploy", &SearchFilters::default(), 5)
+        let summary = hybrid_search(&pool, &embedder, Some("p1"), "deploy", &SearchFilters::default(), 5)
             .await
             .unwrap();
         assert!(summary.results.iter().any(|r| r.hit.kind == "summary"));
@@ -500,11 +500,20 @@ mod tests {
         index_meeting(&pool, &embedder, "m1").await.unwrap();
         index_meeting(&pool, &embedder, "m2").await.unwrap();
 
-        let response = hybrid_search(&pool, &embedder, "p2", "orçamento", &SearchFilters::default(), 10)
+        let response = hybrid_search(&pool, &embedder, Some("p2"), "orçamento", &SearchFilters::default(), 10)
             .await
             .unwrap();
         assert!(!response.results.is_empty());
         assert!(response.results.iter().all(|r| r.hit.meeting_id == "m2"));
+
+        // No project: search everything
+        let all = hybrid_search(&pool, &embedder, None, "orçamento", &SearchFilters::default(), 10)
+            .await
+            .unwrap();
+        let mut meetings: Vec<&str> = all.results.iter().map(|r| r.hit.meeting_id.as_str()).collect();
+        meetings.sort();
+        meetings.dedup();
+        assert_eq!(meetings, vec!["m1", "m2"]);
     }
 
     #[tokio::test]
@@ -519,7 +528,7 @@ mod tests {
         assert_eq!(outcome.embedded_count, 0);
         assert!(outcome.error.unwrap().contains("Ollama"));
 
-        let response = hybrid_search(&pool, &down, "p1", "deploy", &SearchFilters::default(), 5)
+        let response = hybrid_search(&pool, &down, Some("p1"), "deploy", &SearchFilters::default(), 5)
             .await
             .unwrap();
         assert!(response.vector_error.is_some());
@@ -543,8 +552,8 @@ mod tests {
         index_meeting(&pool, &embedder, "m1").await.unwrap();
 
         ProjectsRepository::set_meeting_project(&pool, "m1", "p2").await.unwrap();
-        let in_p1 = hybrid_search(&pool, &embedder, "p1", "deploy", &SearchFilters::default(), 5).await.unwrap();
-        let in_p2 = hybrid_search(&pool, &embedder, "p2", "deploy", &SearchFilters::default(), 5).await.unwrap();
+        let in_p1 = hybrid_search(&pool, &embedder, Some("p1"), "deploy", &SearchFilters::default(), 5).await.unwrap();
+        let in_p2 = hybrid_search(&pool, &embedder, Some("p2"), "deploy", &SearchFilters::default(), 5).await.unwrap();
         assert!(in_p1.results.is_empty());
         assert_eq!(in_p2.results.len(), 1);
 
@@ -565,11 +574,11 @@ mod tests {
         index_meeting(&pool, &embedder, "m2").await.unwrap();
 
         let only_m2 = SearchFilters { meeting_id: Some("m2".into()), ..Default::default() };
-        let response = hybrid_search(&pool, &embedder, "p1", "deploy", &only_m2, 10).await.unwrap();
+        let response = hybrid_search(&pool, &embedder, Some("p1"), "deploy", &only_m2, 10).await.unwrap();
         assert!(response.results.iter().all(|r| r.hit.meeting_id == "m2"));
 
         let future = SearchFilters { date_from: Some("2999-01-01".into()), ..Default::default() };
-        let response = hybrid_search(&pool, &embedder, "p1", "deploy", &future, 10).await.unwrap();
+        let response = hybrid_search(&pool, &embedder, Some("p1"), "deploy", &future, 10).await.unwrap();
         assert!(response.results.is_empty());
     }
 }
