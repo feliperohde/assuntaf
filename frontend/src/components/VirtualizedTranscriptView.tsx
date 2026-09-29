@@ -10,6 +10,9 @@ import { RecordingStatusBar } from "./RecordingStatusBar";
 import { motion, AnimatePresence } from "framer-motion";
 import { TranscriptSegmentData } from "@/types";
 import { useI18n } from '@/i18n';
+import { Loader2, Play, Square } from "lucide-react";
+import { toast } from "sonner";
+import { toggleClip, useClipState } from "@/services/clipPlayer";
 
 export interface VirtualizedTranscriptViewProps {
     /** Transcript segments to display */
@@ -35,6 +38,8 @@ export interface VirtualizedTranscriptViewProps {
     totalCount?: number;
     loadedCount?: number;
     onLoadMore?: () => void;
+    /** Meeting whose recording backs the transcript: enables per-line playback */
+    meetingId?: string;
     /** Extra content under the welcome message when idle with no transcript (Home) */
     emptyStateExtra?: React.ReactNode;
 }
@@ -66,10 +71,49 @@ function cleanStopWords(text: string): string {
     return cleanedText.replace(/\s+/g, ' ').trim();
 }
 
+// Plays this line from the recording (one clip at a time)
+function PlayLineButton({ meetingId, id, start, end }: { meetingId: string; id: string; start: number; end?: number }) {
+    const { t } = useI18n();
+    const clip = useClipState();
+    const active = clip.key === id;
+    const label = active && !clip.loading ? t('transcript.stopLine') : t('transcript.playLine');
+    return (
+        <Tooltip>
+            <TooltipTrigger asChild>
+                <button
+                    type="button"
+                    aria-label={label}
+                    onClick={() => {
+                        toggleClip(meetingId, id, start, end).catch(error =>
+                            toast.error(t('transcript.playFailed'), { description: String(error) }),
+                        );
+                    }}
+                    className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-colors ${
+                        active
+                            ? 'border-blue-600 bg-blue-600 text-white'
+                            : 'border-gray-300 text-gray-500 hover:border-blue-500 hover:text-blue-600'
+                    }`}
+                >
+                    {active && clip.loading ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : active ? (
+                        <Square className="h-2.5 w-2.5 fill-current" />
+                    ) : (
+                        <Play className="h-2.5 w-2.5 fill-current translate-x-[0.5px]" />
+                    )}
+                </button>
+            </TooltipTrigger>
+            <TooltipContent>{label}</TooltipContent>
+        </Tooltip>
+    );
+}
+
 // Memoized transcript segment component
 const TranscriptSegment = memo(function TranscriptSegment({
     id,
     timestamp,
+    endTime,
+    meetingId,
     text,
     confidence,
     speaker,
@@ -78,6 +122,8 @@ const TranscriptSegment = memo(function TranscriptSegment({
 }: {
     id: string;
     timestamp: number;
+    endTime?: number;
+    meetingId?: string;
     text: string;
     confidence?: number;
     speaker?: string;
@@ -102,7 +148,12 @@ const TranscriptSegment = memo(function TranscriptSegment({
                     </TooltipContent>
                 </Tooltip>
                 <div className="flex-1">
-                    {speaker && <span className="block text-xs font-semibold text-blue-700 mb-0.5">{speaker}</span>}
+                    {(speaker || meetingId) && (
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                            {meetingId && <PlayLineButton meetingId={meetingId} id={id} start={timestamp} end={endTime} />}
+                            {speaker && <span className="text-xs font-semibold text-blue-700">{speaker}</span>}
+                        </div>
+                    )}
                     {isStreaming ? (
                         <div className="bg-gray-100 border border-gray-200 rounded-lg px-3 py-2">
                             <p className="text-base text-gray-800 leading-relaxed">{displayText}</p>
@@ -130,6 +181,7 @@ export const VirtualizedTranscriptView: React.FC<VirtualizedTranscriptViewProps>
     totalCount = 0,
     loadedCount = 0,
     onLoadMore,
+    meetingId,
     emptyStateExtra,
 }) => {
   const { t } = useI18n();
@@ -301,6 +353,8 @@ export const VirtualizedTranscriptView: React.FC<VirtualizedTranscriptViewProps>
                                     <TranscriptSegment
                                         id={segment.id}
                                         timestamp={segment.timestamp}
+                                        endTime={segment.endTime}
+                                        meetingId={isRecording ? undefined : meetingId}
                                         text={getDisplayText(segment)}
                                         confidence={segment.confidence}
                                         speaker={segment.speaker}
@@ -358,6 +412,8 @@ export const VirtualizedTranscriptView: React.FC<VirtualizedTranscriptViewProps>
                                     <TranscriptSegment
                                         id={segment.id}
                                         timestamp={segment.timestamp}
+                                        endTime={segment.endTime}
+                                        meetingId={isRecording ? undefined : meetingId}
                                         text={getDisplayText(segment)}
                                         confidence={segment.confidence}
                                         speaker={segment.speaker}

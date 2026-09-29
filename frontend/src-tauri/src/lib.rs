@@ -659,6 +659,7 @@ pub fn run() {
             audio::transcription::remote_provider::commands::save_remote_transcription_config,
             audio::transcription::remote_provider::commands::test_remote_transcription,
             diarization::commands::infer_speaker_names,
+            audio::clip::commands::get_meeting_audio_clip,
             diarization::commands::merge_meeting_speakers,
             analytics::commands::init_analytics,
             analytics::commands::disable_analytics,
