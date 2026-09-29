@@ -919,6 +919,9 @@ pub async fn api_save_meeting_title<R: Runtime>(
     match MeetingsRepository::update_meeting_title(pool, &meeting_id, &title).await {
         Ok(true) => {
             log_info!("Successfully saved meeting title");
+            if let Err(e) = crate::rag::store::RagStore::rename_meeting(pool, &meeting_id, &title).await {
+                log_warn!("Failed to update search index title for {}: {}", meeting_id, e);
+            }
             Ok(serde_json::json!({"message": "Meeting title saved successfully"}))
         }
         Ok(false) => {
@@ -998,6 +1001,7 @@ pub async fn api_save_transcript<R: Runtime>(
                 "Successfully saved transcript and created meeting with id: {}",
                 meeting_id
             );
+            crate::rag::schedule_meeting_index(_app.clone(), meeting_id.clone());
             Ok(serde_json::json!({
                 "status": "success",
                 "message": "Transcript saved successfully",

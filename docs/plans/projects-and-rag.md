@@ -185,6 +185,16 @@ depende de crates do screenpipe) — serve só de referência. Implementação n
 - Novos: `src-tauri/src/{projects, rag, diarization}/`.
 - Frontend: `src/contexts/ProjectContext.tsx`, `components/Sidebar/*`, `src/app/projects/**`, `app/meeting-details` (falantes + deep link), settings de embedding/diarização.
 
+## Status
+
+- [x] Fase 1 — Projetos (PR #1)
+- [x] Fase 2 — Indexação (`src-tauri/src/rag/`): chunking por janela de tempo, embeddings via Ollama,
+  FTS5, busca híbrida com RRF, reindexação por projeto, aba *Knowledge* nas configurações e painel de
+  busca na página do projeto (PR #1)
+- [ ] Fase 3 — Diarização
+- [ ] Fase 4 — Entidades e fatos
+- [ ] Fase 5 — Perguntas e respostas com citações
+
 ## Ordem de entrega sugerida
 
 1. Fase 1 (Projetos) — valor imediato e base de escopo.

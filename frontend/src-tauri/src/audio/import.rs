@@ -658,6 +658,8 @@ async fn run_import<R: Runtime>(
     )
     .await?;
 
+    crate::rag::schedule_meeting_index(app.clone(), meeting_id.clone());
+
     // Write transcripts.json and metadata.json to the meeting folder
     emit_progress(&app, "saving", 90, "Writing transcript files...");
 
