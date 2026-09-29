@@ -279,7 +279,7 @@ pub async fn index_meeting_with_options<R: Runtime>(
         && crate::diarization::service::has_audio(&pool, meeting_id).await
     {
         if let Ok(app_data_dir) = app.path().app_data_dir() {
-            match crate::diarization::service::diarize_meeting(&pool, &app_data_dir, meeting_id).await {
+            match crate::diarization::service::diarize_meeting(&pool, &app_data_dir, meeting_id, Default::default()).await {
                 Ok(outcome) => {
                     let _ = app.emit("diarization-complete", &outcome);
                 }
