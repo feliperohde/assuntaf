@@ -46,12 +46,12 @@ pub fn show_console() -> Result<String, String> {
         // First, get the app name from the bundle
         match Command::new("osascript")
             .arg("-e")
-            .arg(r#"
+            .arg(format!(r#"
                 tell application "Terminal"
                     activate
-                    do script "log stream --process meetily --level info --style compact"
+                    do script "log stream --process {process} --level info --style compact"
                 end tell
-            "#)
+            "#, process = process_name()))
             .spawn()
         {
             Ok(_) => Ok("Console opened in Terminal".to_string()),
@@ -83,16 +83,16 @@ pub fn hide_console() -> Result<String, String> {
         // On macOS, we'll close the Terminal window that's showing our logs
         match Command::new("osascript")
             .arg("-e")
-            .arg(r#"
+            .arg(format!(r#"
                 tell application "Terminal"
                     set windowList to windows
                     repeat with aWindow in windowList
-                        if contents of selected tab of aWindow contains "log stream --process meetily" then
+                        if contents of selected tab of aWindow contains "log stream --process {process}" then
                             close aWindow
                         end if
                     end repeat
                 end tell
-            "#)
+            "#, process = process_name()))
             .spawn()
         {
             Ok(_) => Ok("Console closed".to_string()),
@@ -125,17 +125,17 @@ pub fn toggle_console() -> Result<String, String> {
         // On macOS, check if Terminal is running with our log stream
         let check_result = Command::new("osascript")
             .arg("-e")
-            .arg(r#"
+            .arg(format!(r#"
                 tell application "Terminal"
                     set windowList to windows
                     repeat with aWindow in windowList
-                        if contents of selected tab of aWindow contains "log stream --process meetily" then
+                        if contents of selected tab of aWindow contains "log stream --process {process}" then
                             return "found"
                         end if
                     end repeat
                     return "not found"
                 end tell
-            "#)
+            "#, process = process_name()))
             .output();
             
         match check_result {
@@ -155,4 +155,14 @@ pub fn toggle_console() -> Result<String, String> {
     {
         Ok("Console control is only available on Windows and macOS".to_string())
     }
+}
+
+/// Name of the running app process, for `log stream --process` (the executable
+/// is named after the product in bundles and after the crate in dev builds).
+#[allow(dead_code)]
+fn process_name() -> String {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| "Assunta".to_string())
 }

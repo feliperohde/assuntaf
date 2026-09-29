@@ -36,6 +36,7 @@ pub(crate) use perf_trace;
 
 // Declare audio module
 pub mod analytics;
+pub mod app_migration;
 pub mod api;
 pub mod audio;
 pub mod config;
@@ -478,6 +479,9 @@ pub fn run() {
         .manage(audio::init_system_audio_state())
         .manage(summary::summary_engine::ModelManagerState(Arc::new(tokio::sync::Mutex::new(None))))
         .setup(|_app| {
+            // Must run before the database, stores or models touch the data folder
+            app_migration::migrate_legacy_app_data(&_app.handle());
+
             #[cfg(target_os = "windows")]
             match _app.path().resolve(
                 "onnxruntime.dll",
