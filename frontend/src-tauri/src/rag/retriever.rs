@@ -6,6 +6,7 @@ use sqlx::SqlitePool;
 use std::collections::HashMap;
 
 use super::embeddings::EmbeddingProvider;
+use super::qdrant::QdrantStore;
 use super::store::{ChunkHit, RagStore, SearchFilters};
 
 /// Standard RRF damping constant.
@@ -71,22 +72,54 @@ pub async fn hybrid_search(
     filters: &SearchFilters,
     limit: usize,
 ) -> Result<SearchResponse, sqlx::Error> {
+    hybrid_search_with(pool, embedder, None, project_id, query, filters, limit).await
+}
+
+/// Hybrid search whose semantic half runs in Qdrant when given (local vectors
+/// are used if Qdrant fails, so an outage only costs freshness).
+pub async fn hybrid_search_with(
+    pool: &SqlitePool,
+    embedder: &dyn EmbeddingProvider,
+    qdrant: Option<&QdrantStore>,
+    project_id: Option<&str>,
+    query: &str,
+    filters: &SearchFilters,
+    limit: usize,
+) -> Result<SearchResponse, sqlx::Error> {
     let lexical =
         RagStore::lexical_search(pool, project_id, query, filters, CANDIDATES_PER_RETRIEVER).await?;
 
     let (vector, vector_error) = match embedder.embed(&[query.to_string()]).await {
         Ok(mut vectors) if !vectors.is_empty() => {
             let query_vector = vectors.remove(0);
-            let hits = RagStore::vector_search(
-                pool,
-                project_id,
-                &query_vector,
-                embedder.model_id(),
-                filters,
-                CANDIDATES_PER_RETRIEVER,
-                MIN_VECTOR_SIMILARITY,
-            )
-            .await?;
+            let remote = match qdrant {
+                Some(qdrant) => match qdrant
+                    .search(&query_vector, project_id, filters, CANDIDATES_PER_RETRIEVER, MIN_VECTOR_SIMILARITY)
+                    .await
+                {
+                    Ok(scored) => Some(RagStore::hydrate(pool, scored).await?),
+                    Err(e) => {
+                        log::warn!("RAG: Qdrant search failed, using local vectors: {}", e);
+                        None
+                    }
+                },
+                None => None,
+            };
+            let hits = match remote {
+                Some(hits) => hits,
+                None => {
+                    RagStore::vector_search(
+                        pool,
+                        project_id,
+                        &query_vector,
+                        embedder.model_id(),
+                        filters,
+                        CANDIDATES_PER_RETRIEVER,
+                        MIN_VECTOR_SIMILARITY,
+                    )
+                    .await?
+                }
+            };
             (hits, None)
         }
         Ok(_) => (Vec::new(), Some("Empty embedding response".to_string())),

@@ -21,6 +21,36 @@ pub struct RagConfig {
     pub extract_facts: bool,
     /// Detect speakers in recorded meetings before indexing.
     pub auto_diarize: bool,
+    /// 'local' or 'qdrant'.
+    #[serde(default = "default_vector_store")]
+    pub vector_store: String,
+    #[serde(default)]
+    pub qdrant_url: Option<String>,
+    #[serde(default)]
+    pub qdrant_api_key: Option<String>,
+    /// Collection prefix; the embedding model is appended.
+    #[serde(default)]
+    pub qdrant_collection: Option<String>,
+}
+
+fn default_vector_store() -> String {
+    "local".to_string()
+}
+
+impl RagConfig {
+    /// The Qdrant store to use, when configured.
+    pub fn qdrant(&self) -> Option<super::qdrant::QdrantStore> {
+        if self.vector_store != "qdrant" {
+            return None;
+        }
+        let url = self.qdrant_url.as_deref().map(str::trim).filter(|u| !u.is_empty())?;
+        Some(super::qdrant::QdrantStore::new(
+            url,
+            self.qdrant_api_key.as_deref(),
+            self.qdrant_collection.as_deref(),
+            &self.embedding_model,
+        ))
+    }
 }
 
 /// A chunk ready to be written, with its embedding when one was computed.
@@ -127,12 +157,18 @@ pub fn fts_query(text: &str) -> Option<String> {
     }
 }
 
+fn trimmed(value: &Option<String>) -> Option<String> {
+    value.as_deref().map(str::trim).filter(|v| !v.is_empty()).map(String::from)
+}
+
 pub struct RagStore;
 
 impl RagStore {
     pub async fn get_config(pool: &SqlitePool) -> Result<RagConfig, SqlxError> {
         sqlx::query_as::<_, RagConfig>(
-            "SELECT enabled, embedding_provider, embedding_model, ollama_endpoint, extract_facts, auto_diarize FROM rag_config WHERE id = 1",
+            "SELECT enabled, embedding_provider, embedding_model, ollama_endpoint, extract_facts, auto_diarize,
+                    vector_store, qdrant_url, qdrant_api_key, qdrant_collection
+             FROM rag_config WHERE id = 1",
         )
         .fetch_one(pool)
         .await
@@ -143,7 +179,9 @@ impl RagStore {
             return Err(SqlxError::Protocol("embedding model cannot be empty".to_string()));
         }
         sqlx::query(
-            "UPDATE rag_config SET enabled = ?, embedding_provider = ?, embedding_model = ?, ollama_endpoint = ?, extract_facts = ?, auto_diarize = ? WHERE id = 1",
+            "UPDATE rag_config SET enabled = ?, embedding_provider = ?, embedding_model = ?, ollama_endpoint = ?, extract_facts = ?, auto_diarize = ?,
+                    vector_store = ?, qdrant_url = ?, qdrant_api_key = ?, qdrant_collection = ?
+             WHERE id = 1",
         )
         .bind(config.enabled)
         .bind(&config.embedding_provider)
@@ -158,26 +196,33 @@ impl RagStore {
         )
         .bind(config.extract_facts)
         .bind(config.auto_diarize)
+        .bind(if config.vector_store == "qdrant" { "qdrant" } else { "local" })
+        .bind(trimmed(&config.qdrant_url).map(|u| super::qdrant::normalize_url(&u)))
+        .bind(trimmed(&config.qdrant_api_key))
+        .bind(trimmed(&config.qdrant_collection))
         .execute(pool)
         .await?;
         Ok(())
     }
 
     /// Replaces all chunks of a meeting (rows + FTS entries) atomically.
+    /// Returns the new chunk ids, in the order of `chunks`.
     pub async fn replace_meeting_chunks(
         pool: &SqlitePool,
         meeting: &MeetingRef,
         chunks: &[NewChunk],
         embedding_model: &str,
-    ) -> Result<(), SqlxError> {
+    ) -> Result<Vec<String>, SqlxError> {
         let mut conn = pool.acquire().await?;
         let mut tx = conn.begin().await?;
 
         delete_meeting_chunks_in(&mut tx, &meeting.meeting_id).await?;
 
         let now = Utc::now();
+        let mut ids = Vec::with_capacity(chunks.len());
         for chunk in chunks {
             let id = format!("chunk-{}", Uuid::new_v4());
+            ids.push(id.clone());
             let (blob, model, dims) = match &chunk.embedding {
                 Some(v) => (Some(encode_vector(v)), Some(embedding_model), Some(v.len() as i64)),
                 None => (None, None, None),
@@ -216,7 +261,8 @@ impl RagStore {
                 .await?;
         }
 
-        tx.commit().await
+        tx.commit().await?;
+        Ok(ids)
     }
 
     /// Keeps the lexical index's title column in sync after a meeting is renamed.
@@ -403,7 +449,7 @@ impl RagStore {
     }
 
     /// Loads citation metadata for scored chunk ids, preserving their order.
-    async fn hydrate(pool: &SqlitePool, scored: Vec<(String, f64)>) -> Result<Vec<ChunkHit>, SqlxError> {
+    pub async fn hydrate(pool: &SqlitePool, scored: Vec<(String, f64)>) -> Result<Vec<ChunkHit>, SqlxError> {
         let mut hits = Vec::with_capacity(scored.len());
         for (id, score) in scored {
             let hit: Option<ChunkHit> = sqlx::query_as(

@@ -13,6 +13,7 @@ use super::chunker::{chunk_markdown, chunk_transcript, ChunkOptions, Segment};
 use super::embeddings::{EmbeddingProvider, OllamaEmbedder};
 use super::entities::extract_meeting_facts;
 use super::llm::ConfiguredChatModel;
+use super::qdrant::{QdrantPoint, QdrantStore};
 use crate::diarization::store::SpeakerStore;
 use super::store::{MeetingRef, NewChunk, RagConfig, RagStore};
 use crate::database::repositories::setting::SettingsRepository;
@@ -182,6 +183,16 @@ pub async fn index_meeting(
     embedder: &dyn EmbeddingProvider,
     meeting_id: &str,
 ) -> Result<IndexOutcome> {
+    index_meeting_into(pool, embedder, None, meeting_id).await
+}
+
+/// Indexes a meeting; with `qdrant`, its vectors are also written there.
+pub async fn index_meeting_into(
+    pool: &SqlitePool,
+    embedder: &dyn EmbeddingProvider,
+    qdrant: Option<&QdrantStore>,
+    meeting_id: &str,
+) -> Result<IndexOutcome> {
     let _guard = INDEX_LOCK.lock().await;
 
     let source = load_meeting(pool, meeting_id).await?;
@@ -202,7 +213,32 @@ pub async fn index_meeting(
         }
     };
 
-    RagStore::replace_meeting_chunks(pool, &source.meeting, &chunks, embedder.model_id()).await?;
+    let ids = RagStore::replace_meeting_chunks(pool, &source.meeting, &chunks, embedder.model_id()).await?;
+
+    // Qdrant failures leave the meeting searchable locally; reported as partial
+    let mut embed_error = embed_error;
+    if let Some(qdrant) = qdrant {
+        let points: Vec<QdrantPoint> = ids
+            .iter()
+            .zip(&chunks)
+            .filter_map(|(id, chunk)| {
+                chunk.embedding.as_deref().map(|vector| QdrantPoint {
+                    chunk_id: id,
+                    vector,
+                    project_id: &source.meeting.project_id,
+                    meeting_id,
+                    meeting_date: &source.meeting.meeting_date,
+                })
+            })
+            .collect();
+        if let Err(e) = qdrant.replace_meeting(meeting_id, &points).await {
+            log::warn!("RAG: Qdrant write failed for meeting {}: {}", meeting_id, e);
+            embed_error = Some(match embed_error {
+                Some(previous) => format!("{previous}; {e}"),
+                None => e.to_string(),
+            });
+        }
+    }
 
     let embedded_count = chunks.iter().filter(|c| c.embedding.is_some()).count();
     let status = if embed_error.is_some() { "partial" } else { "indexed" };
@@ -290,7 +326,8 @@ pub async fn index_meeting_with_options<R: Runtime>(
 
     let embedder = embedder_from_config(&pool, &config).await;
 
-    let outcome = match index_meeting(&pool, embedder.as_ref(), meeting_id).await {
+    let qdrant = config.qdrant();
+    let outcome = match index_meeting_into(&pool, embedder.as_ref(), qdrant.as_ref(), meeting_id).await {
         Ok(outcome) => outcome,
         Err(e) => {
             let _ = RagStore::record_job(&pool, meeting_id, "error", 0, 0, None, Some(&e.to_string())).await;
@@ -514,6 +551,80 @@ mod tests {
         meetings.sort();
         meetings.dedup();
         assert_eq!(meetings, vec!["m1", "m2"]);
+    }
+
+    /// Against a real Qdrant (QDRANT_TEST_URL, e.g. http://127.0.0.1:6333); skipped otherwise.
+    #[tokio::test]
+    async fn qdrant_store_indexes_searches_and_falls_back() {
+        let Ok(url) = std::env::var("QDRANT_TEST_URL") else {
+            eprintln!("skipping: QDRANT_TEST_URL not set");
+            return;
+        };
+        use crate::rag::qdrant::QdrantStore;
+        use crate::rag::retriever::{hybrid_search_with, SearchResponse};
+        let prefix = format!("test_{}", uuid::Uuid::new_v4().simple());
+        let qdrant = QdrantStore::new(&url, None, Some(&prefix), "fake");
+
+        let pool = test_pool().await;
+        add_project(&pool, "p1").await;
+        add_project(&pool, "p2").await;
+        add_meeting(&pool, "m1", "Alpha", "p1", &["deploy bloqueado por acesso", "outro assunto"]).await;
+        add_meeting(&pool, "m2", "Beta", "p2", &["deploy do orçamento"]).await;
+        let embedder = FakeEmbedder { fail: false };
+        for m in ["m1", "m2"] {
+            let outcome = index_meeting_into(&pool, &embedder, Some(&qdrant), m).await.unwrap();
+            assert_eq!(outcome.status, "indexed", "{:?}", outcome.error);
+        }
+
+        // Semantic hits must come from Qdrant: drop the local vectors
+        sqlx::query("UPDATE rag_chunks SET embedding = NULL").execute(&pool).await.unwrap();
+        let semantic = |r: &SearchResponse| -> Vec<String> {
+            r.results.iter().filter(|x| x.sources.contains(&"vector")).map(|x| x.hit.meeting_id.clone()).collect()
+        };
+        let scoped = hybrid_search_with(&pool, &embedder, Some(&qdrant), Some("p1"), "deploy", &SearchFilters::default(), 10)
+            .await
+            .unwrap();
+        let scoped_meetings = semantic(&scoped);
+        assert!(!scoped_meetings.is_empty());
+        assert!(scoped_meetings.iter().all(|m| m == "m1"));
+        let all = hybrid_search_with(&pool, &embedder, Some(&qdrant), None, "deploy", &SearchFilters::default(), 10)
+            .await
+            .unwrap();
+        let mut all_meetings = semantic(&all);
+        all_meetings.sort();
+        all_meetings.dedup();
+        assert_eq!(all_meetings, vec!["m1", "m2"]);
+
+        let future = SearchFilters { date_from: Some("2999-01-01".into()), ..Default::default() };
+        let none = hybrid_search_with(&pool, &embedder, Some(&qdrant), None, "deploy", &future, 10).await.unwrap();
+        assert!(none.results.is_empty());
+
+        // Reindexing replaces the meeting's points instead of adding more
+        let count = || async {
+            let body: serde_json::Value = reqwest::Client::new()
+                .get(format!("{}/collections/{}", url.trim_end_matches('/'), qdrant.collection()))
+                .send().await.unwrap().json().await.unwrap();
+            body["result"]["points_count"].as_u64().unwrap()
+        };
+        let before = count().await;
+        index_meeting_into(&pool, &embedder, Some(&qdrant), "m1").await.unwrap();
+        assert_eq!(count().await, before);
+
+        // Unreachable Qdrant: indexing is partial, search uses the local vectors
+        let port = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap().local_addr().unwrap().port();
+        let down = QdrantStore::new(&format!("127.0.0.1:{port}"), None, Some(&prefix), "fake");
+        let outcome = index_meeting_into(&pool, &embedder, Some(&down), "m2").await.unwrap();
+        assert_eq!(outcome.status, "partial");
+        assert!(outcome.error.unwrap().contains("Qdrant"));
+        let fallback = hybrid_search_with(&pool, &embedder, Some(&down), Some("p2"), "orçamento", &SearchFilters::default(), 10)
+            .await
+            .unwrap();
+        assert!(semantic(&fallback).contains(&"m2".to_string()));
+
+        let _ = reqwest::Client::new()
+            .delete(format!("{}/collections/{}", url.trim_end_matches('/'), qdrant.collection()))
+            .send()
+            .await;
     }
 
     #[tokio::test]

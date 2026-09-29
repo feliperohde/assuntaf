@@ -17,7 +17,8 @@ use sqlx::SqlitePool;
 use super::embeddings::EmbeddingProvider;
 use super::entities::{facts_by_type, facts_for_tickets, FactRow, TicketMatcher, FACT_TYPES};
 use super::llm::ChatModel;
-use super::retriever::{hybrid_search, SearchResult};
+use super::qdrant::QdrantStore;
+use super::retriever::{hybrid_search_with, SearchResult};
 use super::store::SearchFilters;
 use crate::database::repositories::project::ProjectsRepository;
 
@@ -397,6 +398,21 @@ pub async fn ask_project(
     history: &[ConversationTurn],
     today: NaiveDate,
 ) -> Result<Answer> {
+    ask_project_with(pool, embedder, None, llm, project_id, question, history, today).await
+}
+
+/// `ask_project` with semantic search in Qdrant when configured.
+#[allow(clippy::too_many_arguments)]
+pub async fn ask_project_with(
+    pool: &SqlitePool,
+    embedder: &dyn EmbeddingProvider,
+    qdrant: Option<&QdrantStore>,
+    llm: &dyn ChatModel,
+    project_id: Option<&str>,
+    question: &str,
+    history: &[ConversationTurn],
+    today: NaiveDate,
+) -> Result<Answer> {
     let question = question.trim();
 
     // 1. Plan
@@ -434,13 +450,15 @@ pub async fn ask_project(
     };
     let has_filters = filters.meeting_id.is_some() || filters.date_from.is_some() || filters.date_to.is_some();
     let mut response =
-        hybrid_search(pool, embedder, project_id, &plan.search_query, &filters, PASSAGES_FOR_ANSWER).await?;
+        hybrid_search_with(pool, embedder, qdrant, project_id, &plan.search_query, &filters, PASSAGES_FOR_ANSWER)
+            .await?;
     let mut filters_relaxed = false;
     if response.results.is_empty() && has_filters {
         filters_relaxed = true;
-        response = hybrid_search(
+        response = hybrid_search_with(
             pool,
             embedder,
+            qdrant,
             project_id,
             &plan.search_query,
             &SearchFilters::default(),

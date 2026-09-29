@@ -637,6 +637,7 @@ pub fn run() {
             rag::commands::rag_reindex_project,
             rag::commands::rag_search,
             rag::commands::rag_test_ollama,
+            rag::commands::rag_test_qdrant,
             rag::commands::rag_ask,
             rag::commands::rag_list_tickets,
             rag::commands::rag_ticket_facts,
