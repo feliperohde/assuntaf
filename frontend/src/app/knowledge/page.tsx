@@ -223,7 +223,7 @@ function KnowledgeContent() {
   const last = Math.min(total, (pageIndex + 1) * PAGE_SIZE);
 
   return (
-    <div className="h-screen bg-gray-50 flex flex-col">
+    <div className="h-screen bg-white flex flex-col">
       <div className="border-b border-gray-200">
         <div className="max-w-4xl mx-auto px-8 py-6">
           <h1 className="text-3xl font-bold flex items-center gap-3">
@@ -288,7 +288,7 @@ function KnowledgeContent() {
 
 export default function KnowledgePage() {
   return (
-    <Suspense fallback={<div className="h-screen bg-gray-50" />}>
+    <Suspense fallback={<div className="h-screen bg-white" />}>
       <KnowledgeContent />
     </Suspense>
   );

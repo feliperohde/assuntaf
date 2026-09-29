@@ -103,8 +103,8 @@ function AskContent() {
   };
 
   return (
-    <div className="h-screen bg-gray-50 flex flex-col">
-      <div className="border-b border-gray-200 bg-gray-50">
+    <div className="h-screen bg-white flex flex-col">
+      <div className="border-b border-gray-200 bg-white">
         <div className="max-w-4xl mx-auto px-8 py-6 flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold flex items-center gap-3">
@@ -244,7 +244,7 @@ function AskContent() {
 
 export default function AskPage() {
   return (
-    <Suspense fallback={<div className="h-screen bg-gray-50" />}>
+    <Suspense fallback={<div className="h-screen bg-white" />}>
       <AskContent />
     </Suspense>
   );
