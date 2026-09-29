@@ -11,7 +11,9 @@ use tokio::sync::Mutex;
 
 use super::cluster::assign_speakers;
 use super::engine::{diarize, ensure_models, models_dir, DiarizeOptions};
+use super::naming::{infer_speaker_names, NamingOutcome};
 use super::store::{MeetingSpeaker, NewSpeaker, SpeakerStore};
+use crate::rag::llm::ConfiguredChatModel;
 use crate::audio::decoder::decode_audio_file;
 use crate::audio::retranscription::find_audio_file;
 
@@ -29,6 +31,11 @@ pub struct DiarizeOutcome {
     /// Transcript segments that received a speaker.
     pub assigned_segments: usize,
     pub total_segments: usize,
+    /// Speakers named from the transcript by the LLM, and split speakers merged.
+    pub named_speakers: usize,
+    pub merged_speakers: usize,
+    /// Why names could not be inferred (e.g. no summary model configured).
+    pub naming_error: Option<String>,
 }
 
 async fn meeting_audio(pool: &SqlitePool, meeting_id: &str) -> Result<PathBuf> {
@@ -100,7 +107,15 @@ pub async fn diarize_meeting(
         .iter()
         .map(|&s| NewSpeaker { centroid: result.centroids[s].clone(), speaking_seconds: result.speaking_seconds[s] })
         .collect();
-    let stored = SpeakerStore::save(pool, meeting_id, &speakers, &segment_speakers).await?;
+    SpeakerStore::save(pool, meeting_id, &speakers, &segment_speakers).await?;
+
+    // Names are a bonus: a missing or failing LLM must not lose the speakers
+    let naming = name_speakers(pool, app_data_dir, meeting_id).await;
+    if let Err(e) = &naming {
+        log::warn!("Diarization: could not infer speaker names for {}: {}", meeting_id, e);
+    }
+    let stored = SpeakerStore::list(pool, meeting_id).await?;
+    let naming_outcome = naming.as_ref().cloned().unwrap_or_default();
 
     let assigned_segments = segment_speakers.iter().filter(|(_, s)| s.is_some()).count();
     log::info!(
@@ -115,7 +130,16 @@ pub async fn diarize_meeting(
         speakers: stored,
         assigned_segments,
         total_segments: segment_speakers.len(),
+        named_speakers: naming_outcome.named,
+        merged_speakers: naming_outcome.merged,
+        naming_error: naming.err().map(|e| e.to_string()),
     })
+}
+
+/// Infers speaker names from the meeting's transcript with the summary LLM.
+pub async fn name_speakers(pool: &SqlitePool, app_data_dir: &Path, meeting_id: &str) -> Result<NamingOutcome> {
+    let llm = ConfiguredChatModel::from_settings(pool, Some(app_data_dir.to_path_buf())).await?;
+    infer_speaker_names(pool, &llm, meeting_id).await
 }
 
 #[cfg(test)]

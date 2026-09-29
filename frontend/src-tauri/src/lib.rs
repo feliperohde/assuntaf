@@ -644,6 +644,8 @@ pub fn run() {
             diarization::commands::diarize_meeting,
             diarization::commands::list_meeting_speakers,
             diarization::commands::update_meeting_speaker,
+            diarization::commands::infer_speaker_names,
+            diarization::commands::merge_meeting_speakers,
             analytics::commands::init_analytics,
             analytics::commands::disable_analytics,
             analytics::commands::track_event,

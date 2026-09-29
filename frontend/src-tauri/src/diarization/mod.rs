@@ -4,5 +4,6 @@
 pub mod cluster;
 pub mod commands;
 pub mod engine;
+pub mod naming;
 pub mod service;
 pub mod store;
