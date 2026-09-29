@@ -12,9 +12,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { useI18n } from '@/i18n';
 
 /** Switches the active project. Locked while recording so the meeting lands in the project it started in. */
 export function ProjectSelector() {
+  const { t } = useI18n();
   const router = useRouter();
   const { projects, activeProjectId, setActiveProjectId } = useProject();
   const { isRecording } = useRecordingState();
@@ -24,7 +26,7 @@ export function ProjectSelector() {
       <Select value={activeProjectId} onValueChange={setActiveProjectId} disabled={isRecording}>
         <SelectTrigger className="h-9 flex-1 min-w-0" title={isRecording ? 'Cannot switch projects while recording' : 'Active project'}>
           <FolderKanban className="w-4 h-4 mr-2 flex-shrink-0 text-gray-600" />
-          <SelectValue placeholder="Project" />
+          <SelectValue placeholder={t('sidebar.project')} />
         </SelectTrigger>
         <SelectContent>
           {projects.map(project => (
@@ -43,8 +45,8 @@ export function ProjectSelector() {
       <button
         onClick={() => router.push('/projects')}
         className="p-2 rounded-md hover:bg-gray-100 flex-shrink-0"
-        aria-label="Manage projects"
-        title="Manage projects"
+        aria-label={t('sidebar.manageProjects')}
+        title={t('sidebar.manageProjects')}
       >
         <Settings2 className="w-4 h-4 text-gray-600" />
       </button>

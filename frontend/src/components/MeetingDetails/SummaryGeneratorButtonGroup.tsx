@@ -19,6 +19,7 @@ import {
 import { Sparkles, Settings, Loader2, FileText, Check, Square } from 'lucide-react';
 import Analytics from '@/lib/analytics';
 import { useState, useEffect, ReactNode } from 'react';
+import { useI18n } from '@/i18n';
 
 interface SummaryGeneratorButtonGroupProps {
   languageSlot?: ReactNode;
@@ -55,6 +56,7 @@ export function SummaryGeneratorButtonGroup({
   onOpenModelSettings,
   languageSlot
 }: SummaryGeneratorButtonGroupProps) {
+  const { t } = useI18n();
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
 
   // Expose the function to open the modal via callback registration
@@ -92,10 +94,10 @@ export function SummaryGeneratorButtonGroup({
             Analytics.trackButtonClick('stop_summary_generation', 'meeting_details');
             onStopGeneration();
           }}
-          title="Stop summary generation"
+          title={t('summary.stop')}
         >
           <Square size={18} fill="currentColor" />
-          <span className="hidden @[24rem]:inline">Stop</span>
+          <span className="hidden @[24rem]:inline">{t('common.stop')}</span>
         </Button>
       ) : (
         <Button
@@ -109,19 +111,19 @@ export function SummaryGeneratorButtonGroup({
           disabled={isModelConfigLoading}
           title={
             isModelConfigLoading
-              ? 'Loading model configuration...'
-              : hasSummary ? 'Regenerate AI Summary' : 'Generate AI Summary'
+              ? t('summary.loadingModel')
+              : hasSummary ? t('summary.regenerateAi') : t('summary.generateAi')
           }
         >
           {isModelConfigLoading ? (
             <>
               <Loader2 className="animate-spin" size={18} />
-              <span className="hidden @[24rem]:inline">Processing...</span>
+              <span className="hidden @[24rem]:inline">{t('common.processing')}</span>
             </>
           ) : (
             <>
               <Sparkles size={18} />
-              <span className="hidden @[24rem]:inline">{hasSummary ? 'Regenerate Summary' : 'Generate Summary'}</span>
+              <span className="hidden @[24rem]:inline">{hasSummary ? t('summary.regenerate') : t('summary.generate')}</span>
             </>
           )}
         </Button>
@@ -135,17 +137,17 @@ export function SummaryGeneratorButtonGroup({
           <Button
             variant="outline"
             size="sm"
-            title="Summary Settings"
+            title={t('summary.settings')}
           >
             <Settings />
-            <span className="hidden @[40rem]:inline">AI Model</span>
+            <span className="hidden @[40rem]:inline">{t('summary.aiModel')}</span>
           </Button>
         </DialogTrigger>
         <DialogContent
           aria-describedby={undefined}
         >
           <VisuallyHidden>
-            <DialogTitle>Model Settings</DialogTitle>
+            <DialogTitle>{t('summary.modelSettings')}</DialogTitle>
           </VisuallyHidden>
           <ModelSettingsModal
             onSave={async (config) => {
@@ -167,10 +169,10 @@ export function SummaryGeneratorButtonGroup({
             <Button
               variant="outline"
               size="sm"
-              title="Select summary template"
+              title={t('summary.selectTemplate')}
             >
               <FileText />
-              <span className="hidden @[40rem]:inline">Template</span>
+              <span className="hidden @[40rem]:inline">{t('summary.template')}</span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">

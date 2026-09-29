@@ -19,6 +19,7 @@ import {
   ProjectMember,
   projectService,
 } from '@/services/projectService';
+import { useI18n } from '@/i18n';
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#6b7280'];
 
@@ -63,6 +64,7 @@ function errorMessage(error: unknown): string {
 }
 
 export default function ProjectsPage() {
+  const { t } = useI18n();
   const router = useRouter();
   const { activeProjectId, setActiveProjectId, refreshProjects } = useProject();
 
@@ -79,7 +81,7 @@ export default function ProjectsPage() {
     try {
       setProjects(await projectService.listProjects(true));
     } catch (error) {
-      toast.error('Failed to load projects', { description: errorMessage(error) });
+      toast.error(t('projects.loadFailed'), { description: errorMessage(error) });
     }
   }, []);
 
@@ -100,7 +102,7 @@ export default function ProjectsPage() {
     projectService
       .listMembers(selectedId)
       .then(setMembers)
-      .catch(error => toast.error('Failed to load members', { description: errorMessage(error) }));
+      .catch(error => toast.error(t('projects.membersLoadFailed'), { description: errorMessage(error) }));
   }, [selectedId, projects]);
 
   const updateField = <K extends keyof ProjectInput>(key: K, value: ProjectInput[K]) =>
@@ -108,7 +110,7 @@ export default function ProjectsPage() {
 
   const handleSave = async () => {
     if (!form.name.trim()) {
-      toast.error('Project name is required');
+      toast.error(t('projects.nameRequired'));
       return;
     }
     setSaving(true);
@@ -119,9 +121,9 @@ export default function ProjectsPage() {
       await loadProjects();
       await refreshProjects();
       setSelectedId(saved.id);
-      toast.success(selectedId === null ? 'Project created' : 'Project saved');
+      toast.success(selectedId === null ? t('projects.created') : t('projects.saved'));
     } catch (error) {
-      toast.error('Failed to save project', { description: errorMessage(error) });
+      toast.error(t('projects.saveFailed'), { description: errorMessage(error) });
     } finally {
       setSaving(false);
     }
@@ -135,9 +137,9 @@ export default function ProjectsPage() {
       await loadProjects();
       await refreshProjects();
       setSelectedId(DEFAULT_PROJECT_ID);
-      toast.success('Project deleted', { description: 'Its meetings were moved to the default project' });
+      toast.success(t('projects.deleted'), { description: t('projects.deletedHelp') });
     } catch (error) {
-      toast.error('Failed to delete project', { description: errorMessage(error) });
+      toast.error(t('projects.deleteFailed'), { description: errorMessage(error) });
     }
   };
 
@@ -151,7 +153,7 @@ export default function ProjectsPage() {
       setMembers(prev => [...prev, member].sort((a, b) => a.name.localeCompare(b.name)));
       setNewMember({ name: '', role: '' });
     } catch (error) {
-      toast.error('Failed to add member', { description: errorMessage(error) });
+      toast.error(t('projects.addMemberFailed'), { description: errorMessage(error) });
     }
   };
 
@@ -160,7 +162,7 @@ export default function ProjectsPage() {
       await projectService.deleteMember(memberId);
       setMembers(prev => prev.filter(m => m.id !== memberId));
     } catch (error) {
-      toast.error('Failed to remove member', { description: errorMessage(error) });
+      toast.error(t('projects.removeMemberFailed'), { description: errorMessage(error) });
     }
   };
 
@@ -176,9 +178,9 @@ export default function ProjectsPage() {
               className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
             >
               <ArrowLeft className="w-5 h-5" />
-              <span>Back</span>
+              <span>{t('common.back')}</span>
             </button>
-            <h1 className="text-3xl font-bold">Projects</h1>
+            <h1 className="text-3xl font-bold">{t('nav.projects')}</h1>
           </div>
         </div>
       </div>
@@ -188,7 +190,7 @@ export default function ProjectsPage() {
           {/* Project list */}
           <div className="space-y-1">
             <Button variant="outline" className="w-full justify-start mb-2" onClick={() => setSelectedId(null)}>
-              <Plus className="w-4 h-4 mr-2" /> New project
+              <Plus className="w-4 h-4 mr-2" /> {t('projects.new')}
             </Button>
             {projects.map(project => (
               <button
@@ -200,8 +202,8 @@ export default function ProjectsPage() {
               >
                 <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: project.color || '#9ca3af' }} />
                 <span className="flex-1 truncate">{project.name}</span>
-                {project.id === activeProjectId && <Check className="w-4 h-4 text-blue-600" aria-label="Active project" />}
-                {project.archived && <span className="text-xs text-gray-500">archived</span>}
+                {project.id === activeProjectId && <Check className="w-4 h-4 text-blue-600" aria-label={t('projects.active')} />}
+                {project.archived && <span className="text-xs text-gray-500">{t('projects.archivedBadge')}</span>}
               </button>
             ))}
           </div>
@@ -211,22 +213,22 @@ export default function ProjectsPage() {
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-semibold flex items-center gap-2">
                 <FolderKanban className="w-5 h-5 text-gray-600" />
-                {selectedId === null ? 'New project' : form.name || 'Project'}
+                {selectedId === null ? t('projects.new') : form.name || t('sidebar.project')}
               </h2>
               {selectedId && selectedId !== activeProjectId && !form.archived && (
                 <Button variant="outline" size="sm" onClick={() => setActiveProjectId(selectedId)}>
-                  Set as active
+                  {t('projects.setActive')}
                 </Button>
               )}
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="project-name">Name</Label>
-              <Input id="project-name" value={form.name} onChange={e => updateField('name', e.target.value)} placeholder="e.g. Payments platform" />
+              <Label htmlFor="project-name">{t('projects.name')}</Label>
+              <Input id="project-name" value={form.name} onChange={e => updateField('name', e.target.value)} placeholder={t('projects.namePlaceholder')} />
             </div>
 
             <div className="space-y-2">
-              <Label>Color</Label>
+              <Label>{t('projects.color')}</Label>
               <div className="flex gap-2">
                 {COLORS.map(color => (
                   <button
@@ -234,63 +236,63 @@ export default function ProjectsPage() {
                     onClick={() => updateField('color', color)}
                     className={`w-6 h-6 rounded-full border-2 ${form.color === color ? 'border-gray-900' : 'border-transparent'}`}
                     style={{ backgroundColor: color }}
-                    aria-label={`Color ${color}`}
+                    aria-label={t('projects.colorOption', { color })}
                   />
                 ))}
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="project-description">Description</Label>
-              <Input id="project-description" value={form.description ?? ''} onChange={e => updateField('description', e.target.value)} placeholder="One-line summary" />
+              <Label htmlFor="project-description">{t('projects.description')}</Label>
+              <Input id="project-description" value={form.description ?? ''} onChange={e => updateField('description', e.target.value)} placeholder={t('projects.descriptionPlaceholder')} />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="project-context">Context</Label>
+              <Label htmlFor="project-context">{t('projects.context')}</Label>
               <Textarea
                 id="project-context"
                 rows={5}
                 value={form.contextMd ?? ''}
                 onChange={e => updateField('contextMd', e.target.value)}
-                placeholder="Goals, stack, team, conventions… Used as background for summaries and questions about this project."
+                placeholder={t('projects.contextPlaceholder')}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="project-glossary">Glossary</Label>
+              <Label htmlFor="project-glossary">{t('projects.glossary')}</Label>
               <Textarea
                 id="project-glossary"
                 rows={3}
                 value={form.glossary ?? ''}
                 onChange={e => updateField('glossary', e.target.value)}
-                placeholder="Names, acronyms and jargon, one per line (helps transcription and search)"
+                placeholder={t('projects.glossaryPlaceholder')}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="project-tickets">Ticket ID patterns</Label>
+              <Label htmlFor="project-tickets">{t('projects.ticketPatterns')}</Label>
               <Input
                 id="project-tickets"
                 value={form.ticketPatterns ?? ''}
                 onChange={e => updateField('ticketPatterns', e.target.value)}
-                placeholder="e.g. PAY-\d+, OPS-\d+"
+                placeholder={t('projects.ticketPlaceholder')}
               />
             </div>
 
             {selectedId && !isDefault && (
               <label className="flex items-center gap-2 text-sm text-gray-700">
                 <input type="checkbox" checked={!!form.archived} onChange={e => updateField('archived', e.target.checked)} />
-                Archived (hidden from the project selector)
+                {t('projects.archived')}
               </label>
             )}
 
             <div className="flex items-center gap-2 pt-2">
               <Button variant="blue" onClick={handleSave} disabled={saving}>
-                {selectedId === null ? 'Create project' : 'Save'}
+                {selectedId === null ? t('projects.create') : t('common.save')}
               </Button>
               {selectedId && !isDefault && (
                 <Button variant="outline" className="text-red-600" onClick={() => setConfirmDelete(true)}>
-                  <Trash2 className="w-4 h-4 mr-2" /> Delete
+                  <Trash2 className="w-4 h-4 mr-2" /> {t('common.delete')}
                 </Button>
               )}
             </div>
@@ -298,8 +300,8 @@ export default function ProjectsPage() {
             {/* Members */}
             {selectedId && (
               <div className="border-t border-gray-100 pt-5 space-y-3">
-                <h3 className="font-semibold">Members</h3>
-                <p className="text-sm text-gray-500">People who take part in this project's meetings. Used to identify speakers.</p>
+                <h3 className="font-semibold">{t('projects.members')}</h3>
+                <p className="text-sm text-gray-500">{t('projects.membersHelp')}</p>
                 <ul className="divide-y divide-gray-100">
                   {members.map(member => (
                     <li key={member.id} className="flex items-center justify-between py-2 text-sm">
@@ -310,26 +312,26 @@ export default function ProjectsPage() {
                       <button
                         onClick={() => handleRemoveMember(member.id)}
                         className="p-1 rounded-md hover:bg-red-50 hover:text-red-600"
-                        aria-label={`Remove ${member.name}`}
+                        aria-label={t('projects.removeMember', { name: member.name })}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </li>
                   ))}
-                  {members.length === 0 && <li className="py-2 text-sm text-gray-400">No members yet</li>}
+                  {members.length === 0 && <li className="py-2 text-sm text-gray-400">{t('projects.noMembers')}</li>}
                 </ul>
                 <div className="flex gap-2">
                   <Input
                     value={newMember.name}
                     onChange={e => setNewMember(prev => ({ ...prev, name: e.target.value }))}
                     onKeyDown={e => e.key === 'Enter' && handleAddMember()}
-                    placeholder="Name"
+                    placeholder={t('projects.name')}
                   />
                   <Input
                     value={newMember.role}
                     onChange={e => setNewMember(prev => ({ ...prev, role: e.target.value }))}
                     onKeyDown={e => e.key === 'Enter' && handleAddMember()}
-                    placeholder="Role (optional)"
+                    placeholder={t('projects.rolePlaceholder')}
                   />
                   <Button variant="outline" onClick={handleAddMember} disabled={!newMember.name.trim()}>
                     <UserPlus className="w-4 h-4" />
@@ -346,7 +348,7 @@ export default function ProjectsPage() {
 
       <ConfirmationModal
         isOpen={confirmDelete}
-        text="Delete this project? Its meetings will be moved to the default project."
+        text={t('projects.deleteConfirm')}
         onConfirm={handleDelete}
         onCancel={() => setConfirmDelete(false)}
       />

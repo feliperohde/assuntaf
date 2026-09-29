@@ -7,9 +7,11 @@ import { updateService, UpdateInfo } from '@/services/updateService';
 import { Button } from './ui/button';
 import { Loader2, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useI18n } from '@/i18n';
 
 
 export function About() {
+  const { t } = useI18n();
     const [currentVersion, setCurrentVersion] = useState<string>('0.4.1');
     const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
     const [isChecking, setIsChecking] = useState(false);
@@ -28,7 +30,7 @@ export function About() {
             if (info.available) {
                 setShowUpdateDialog(true);
             } else {
-                toast.success('You are running the latest version');
+                toast.success(t('about.latest'));
             }
         } catch (error: any) {
             console.error('Failed to check for updates:', error);
@@ -47,7 +49,7 @@ export function About() {
                 </div>
                 <span className="text-sm text-gray-500"> v{currentVersion}</span>
                 <p className="text-medium text-gray-600 mt-1">
-                    Your meetings, organized by project and searchable by meaning — all on your own machine.
+                    {t('about.tagline')}
                 </p>
                 <div className="mt-3">
                     <Button
@@ -60,12 +62,12 @@ export function About() {
                         {isChecking ? (
                             <>
                                 <Loader2 className="h-3 w-3 mr-2 animate-spin" />
-                                Checking...
+                                {t('about.checking')}
                             </>
                         ) : (
                             <>
                                 <CheckCircle2 className="h-3 w-3 mr-2" />
-                                Check for Updates
+                                {t('about.checkUpdates')}
                             </>
                         )}
                     </Button>
@@ -79,23 +81,23 @@ export function About() {
 
             {/* Features */}
             <div className="space-y-3">
-                <h2 className="text-base font-semibold text-gray-800">What Assunta does</h2>
+                <h2 className="text-base font-semibold text-gray-800">{t('about.whatItDoes')}</h2>
                 <div className="grid grid-cols-2 gap-2">
                     <div className="bg-gray-50 rounded p-3">
-                        <h3 className="font-bold text-sm text-gray-900 mb-1">Projects</h3>
-                        <p className="text-xs text-gray-600 leading-relaxed">Every recording, transcript and summary lives in its project, with its own context, glossary and members.</p>
+                        <h3 className="font-bold text-sm text-gray-900 mb-1">{t('nav.projects')}</h3>
+                        <p className="text-xs text-gray-600 leading-relaxed">{t('about.projects')}</p>
                     </div>
                     <div className="bg-gray-50 rounded p-3">
-                        <h3 className="font-bold text-sm text-gray-900 mb-1">Ask your meetings</h3>
-                        <p className="text-xs text-gray-600 leading-relaxed">Ask what was said, when, and by whom. Answers cite the meeting, date and minute.</p>
+                        <h3 className="font-bold text-sm text-gray-900 mb-1">{t('about.ask')}</h3>
+                        <p className="text-xs text-gray-600 leading-relaxed">{t('about.askHelp')}</p>
                     </div>
                     <div className="bg-gray-50 rounded p-3">
-                        <h3 className="font-bold text-sm text-gray-900 mb-1">Tickets & decisions</h3>
-                        <p className="text-xs text-gray-600 leading-relaxed">Ticket status, blockers, decisions and action items are extracted from each meeting.</p>
+                        <h3 className="font-bold text-sm text-gray-900 mb-1">{t('about.tickets')}</h3>
+                        <p className="text-xs text-gray-600 leading-relaxed">{t('about.ticketsHelp')}</p>
                     </div>
                     <div className="bg-gray-50 rounded p-3">
-                        <h3 className="font-bold text-sm text-gray-900 mb-1">Who said what</h3>
-                        <p className="text-xs text-gray-600 leading-relaxed">Speakers are detected and recognized by voice once linked to project members.</p>
+                        <h3 className="font-bold text-sm text-gray-900 mb-1">{t('about.who')}</h3>
+                        <p className="text-xs text-gray-600 leading-relaxed">{t('about.whoHelp')}</p>
                     </div>
                 </div>
                 <p className="text-xs text-gray-500">
@@ -107,7 +109,7 @@ export function About() {
             {/* Footer */}
             <div className="pt-2 border-t border-gray-200 text-center">
                 <p className="text-xs text-gray-400">
-                    Based on Meetily by Zackriya Solutions (MIT License)
+                    {t('about.basedOn')}
                 </p>
             </div>
             <AnalyticsConsentSwitch />

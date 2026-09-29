@@ -8,9 +8,11 @@ import { Input } from "./ui/input"
 import { Label } from "./ui/label"
 import { Button } from "./ui/button"
 import { OllamaProbe, RagConfig, ragService } from "@/services/ragService"
+import { useI18n } from "@/i18n"
 
 /** Settings for the meeting knowledge index (embeddings via local Ollama). */
 export function RagSettings() {
+  const { t } = useI18n();
   const [config, setConfig] = useState<RagConfig | null>(null)
   const [saving, setSaving] = useState(false)
   const [probe, setProbe] = useState<OllamaProbe | null>(null)
@@ -22,7 +24,7 @@ export function RagSettings() {
     try {
       setProbe(await ragService.testOllama(config.ollamaEndpoint, config.embeddingModel))
     } catch (error) {
-      toast.error("Connection test failed", { description: String(error) })
+      toast.error(t('rag.testFailed'), { description: String(error) })
     } finally {
       setTesting(false)
     }
@@ -32,7 +34,7 @@ export function RagSettings() {
     ragService
       .getConfig()
       .then(setConfig)
-      .catch(error => toast.error("Failed to load knowledge index settings", { description: String(error) }))
+      .catch(error => toast.error(t('rag.loadFailed'), { description: String(error) }))
   }, [])
 
   if (!config) return null
@@ -41,11 +43,11 @@ export function RagSettings() {
     setSaving(true)
     try {
       setConfig(await ragService.saveConfig(config))
-      toast.success("Knowledge index settings saved", {
-        description: "If you changed the model, reindex your projects from the Projects page.",
+      toast.success(t('rag.saved'), {
+        description: t('rag.savedHelp'),
       })
     } catch (error) {
-      toast.error("Failed to save settings", { description: String(error) })
+      toast.error(t('rag.saveFailed'), { description: String(error) })
     } finally {
       setSaving(false)
     }
@@ -58,11 +60,10 @@ export function RagSettings() {
           <div>
             <div className="flex items-center gap-2 mb-1">
               <BrainCircuit className="h-5 w-5 text-gray-600" />
-              <h3 className="text-lg font-semibold text-gray-900">Meeting knowledge index</h3>
+              <h3 className="text-lg font-semibold text-gray-900">{t('rag.title')}</h3>
             </div>
             <p className="text-sm text-gray-600">
-              Indexes transcripts, summaries and notes of each project so you can search meetings by meaning,
-              not just exact words. Runs locally through Ollama.
+              {t('rag.intro')}
             </p>
           </div>
           <Switch
@@ -72,7 +73,7 @@ export function RagSettings() {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="rag-model">Embedding model (Ollama)</Label>
+          <Label htmlFor="rag-model">{t('rag.model')}</Label>
           <Input
             id="rag-model"
             value={config.embeddingModel}
@@ -80,13 +81,12 @@ export function RagSettings() {
             placeholder="bge-m3"
           />
           <p className="text-xs text-gray-500">
-            Recommended: <code>bge-m3</code> (multilingual, good for Portuguese). Install with{" "}
-            <code>ollama pull {config.embeddingModel || "bge-m3"}</code>.
+            {t('rag.modelHelp', { model: config.embeddingModel || "bge-m3" })}
           </p>
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="rag-endpoint">Ollama server</Label>
+          <Label htmlFor="rag-endpoint">{t('rag.server')}</Label>
           <div className="flex gap-2">
             <Input
               id="rag-endpoint"
@@ -95,15 +95,14 @@ export function RagSettings() {
                 setConfig({ ...config, ollamaEndpoint: e.target.value || null })
                 setProbe(null)
               }}
-              placeholder="e.g. 192.168.3.16 — empty uses the summary Ollama or this computer"
+              placeholder={t('rag.serverPlaceholder')}
             />
             <Button variant="outline" onClick={testConnection} disabled={testing}>
-              {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : "Test connection"}
+              {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : t('rag.test')}
             </Button>
           </div>
           <p className="text-xs text-gray-500">
-            Accepts an IP or host name; port 11434 and http:// are added automatically. An Ollama on another machine
-            must accept network connections (start it with <code>OLLAMA_HOST=0.0.0.0 ollama serve</code>).
+            {t('rag.serverHelp')}
           </p>
           {probe && (
             <div
@@ -119,18 +118,15 @@ export function RagSettings() {
                 </p>
               ) : probe.modelAvailable ? (
                 <p className="flex items-center gap-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> Connected to {probe.endpoint}; model{" "}
-                  <code>{config.embeddingModel}</code> is available. Save, then reindex your projects.
+                  <CheckCircle2 className="w-3.5 h-3.5" /> {t('rag.connectedOk', { endpoint: probe.endpoint, model: config.embeddingModel })}
                 </p>
               ) : (
                 <div className="space-y-1">
                   <p className="flex items-center gap-1.5">
-                    <AlertTriangle className="w-3.5 h-3.5" /> Connected to {probe.endpoint}, but{" "}
-                    <code>{config.embeddingModel}</code> is not installed there. Run{" "}
-                    <code>ollama pull {config.embeddingModel}</code> on that machine.
+                    <AlertTriangle className="w-3.5 h-3.5" /> {t('rag.connectedMissing', { endpoint: probe.endpoint, model: config.embeddingModel })}
                   </p>
                   {probe.models.length > 0 && (
-                    <p>Available models: {probe.models.join(", ")}</p>
+                    <p>{t('rag.availableModels', { models: probe.models.join(", ") })}</p>
                   )}
                 </div>
               )}
@@ -140,10 +136,9 @@ export function RagSettings() {
 
         <div className="flex items-center justify-between">
           <div>
-            <Label>Extract tickets, decisions and action items</Label>
+            <Label>{t('rag.extractFacts')}</Label>
             <p className="text-xs text-gray-500 mt-1">
-              After indexing, the summary model lists ticket status, blockers, decisions and action items of each
-              meeting. Enables the Tickets view and more precise answers. Uses the summary model once per meeting.
+              {t('rag.extractFactsHelp')}
             </p>
           </div>
           <Switch
@@ -154,10 +149,9 @@ export function RagSettings() {
 
         <div className="flex items-center justify-between">
           <div>
-            <Label>Detect speakers automatically</Label>
+            <Label>{t('rag.autoDiarize')}</Label>
             <p className="text-xs text-gray-500 mt-1">
-              Identifies who spoke when in each recorded meeting (runs locally; downloads ~35 MB of models on first
-              use). Speakers linked to project members are recognized by voice in later meetings.
+              {t('rag.autoDiarizeHelp')}
             </p>
           </div>
           <Switch
@@ -167,7 +161,7 @@ export function RagSettings() {
         </div>
 
         <Button variant="blue" onClick={save} disabled={saving || !config.embeddingModel.trim()}>
-          Save
+          {t('common.save')}
         </Button>
       </div>
     </div>

@@ -15,15 +15,17 @@ import {
   formatTimestamp,
   ragService,
 } from '@/services/ragService';
+import { useI18n, type MessageKey } from '@/i18n';
 
-const KIND_LABELS: Record<string, string> = {
-  transcript: 'Transcript',
-  summary: 'Summary',
-  notes: 'Notes',
+const KIND_LABELS: Record<string, MessageKey> = {
+  transcript: 'kind.transcript',
+  summary: 'kind.summary',
+  notes: 'kind.notes',
 };
 
 /** Index status, reindexing and hybrid search for one project's meetings. */
 export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
+  const { t } = useI18n();
   const router = useRouter();
   const { setCurrentMeeting } = useSidebar();
   const [status, setStatus] = useState<ProjectIndexStatus | null>(null);
@@ -65,9 +67,9 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
     try {
       const queued = await ragService.reindexProject(projectId);
       setReindexing(queued > 0);
-      toast.info(queued > 0 ? `Reindexing ${queued} meeting(s)…` : 'This project has no meetings yet');
+      toast.info(queued > 0 ? t('knowledge.reindexQueued', { count: queued }) : t('knowledge.noMeetings'));
     } catch (error) {
-      toast.error('Failed to start reindexing', { description: String(error) });
+      toast.error(t('knowledge.reindexFailed'), { description: String(error) });
     }
   };
 
@@ -77,7 +79,7 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
     try {
       setResponse(await ragService.search({ projectId, query: query.trim(), limit: 10 }));
     } catch (error) {
-      toast.error('Search failed', { description: String(error) });
+      toast.error(t('knowledge.searchFailed'), { description: String(error) });
     } finally {
       setSearching(false);
     }
@@ -94,27 +96,31 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
   return (
     <div className="border-t border-gray-100 pt-5 space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold">Knowledge index</h3>
+        <h3 className="font-semibold">{t('knowledge.indexTitle')}</h3>
         <Button variant="outline" size="sm" onClick={handleReindex} disabled={reindexing}>
           <RefreshCw className={`w-4 h-4 mr-2 ${reindexing ? 'animate-spin' : ''}`} />
-          {reindexing ? 'Reindexing…' : 'Reindex project'}
+          {reindexing ? t('knowledge.reindexing') : t('knowledge.reindex')}
         </Button>
       </div>
 
       {status && (
         <div className="text-sm text-gray-600 space-y-1">
           <p>
-            {status.indexedMeetings + status.partialMeetings} of {status.meetingCount} meetings indexed ·{' '}
-            {status.chunkCount} passages · {status.embeddedChunks} with semantic vectors
+            {t('knowledge.stats', {
+              indexed: status.indexedMeetings + status.partialMeetings,
+              total: status.meetingCount,
+              chunks: status.chunkCount,
+              vectors: status.embeddedChunks,
+            })}
           </p>
           {needsAttention && (
             <p className="flex items-start gap-2 text-amber-700">
               <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
               <span>
-                {status.staleEmbeddings > 0 && 'Some passages were indexed with a different model. '}
-                {(status.partialMeetings > 0 || status.failedMeetings > 0) && 'Some meetings are only keyword-searchable. '}
-                {status.lastError && <span className="block text-xs">Last error: {status.lastError}</span>}
-                Check the Ollama server in Settings → Knowledge (Test connection), then reindex.
+                {status.staleEmbeddings > 0 && t('knowledge.stale') + ' '}
+                {(status.partialMeetings > 0 || status.failedMeetings > 0) && t('knowledge.partial') + ' '}
+                {status.lastError && <span className="block text-xs">{t('knowledge.lastError', { error: status.lastError })}</span>}
+                {t('knowledge.checkOllama')}
               </span>
             </p>
           )}
@@ -126,7 +132,7 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
           value={query}
           onChange={e => setQuery(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleSearch()}
-          placeholder="Search this project's meetings, e.g. why is ABC-123 blocked?"
+          placeholder={t('knowledge.searchPlaceholder')}
         />
         <Button variant="blue" onClick={handleSearch} disabled={searching || !query.trim()}>
           <Search className="w-4 h-4" />
@@ -135,13 +141,13 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
 
       {response?.vectorError && (
         <p className="text-xs text-amber-700">
-          Semantic search unavailable ({response.vectorError}). Showing keyword matches only.
+          {t('knowledge.semanticUnavailable', { reason: response.vectorError })}
         </p>
       )}
 
       {response && (
         <ul className="space-y-2">
-          {response.results.length === 0 && <li className="text-sm text-gray-400">No matches</li>}
+          {response.results.length === 0 && <li className="text-sm text-gray-400">{t('knowledge.noMatches')}</li>}
           {response.results.map(result => {
             const start = formatTimestamp(result.startTime);
             return (
@@ -154,7 +160,7 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
                     <span className="font-medium text-gray-800">{result.meetingTitle}</span>
                     <span>· {result.meetingDate.slice(0, 10)}</span>
                     {start && <span>· {start}</span>}
-                    <span className="ml-auto px-1.5 py-0.5 rounded bg-gray-100">{KIND_LABELS[result.kind] ?? result.kind}</span>
+                    <span className="ml-auto px-1.5 py-0.5 rounded bg-gray-100">{KIND_LABELS[result.kind] ? t(KIND_LABELS[result.kind]) : result.kind}</span>
                   </div>
                   <p className="text-sm text-gray-700 line-clamp-3 whitespace-pre-line">{result.text}</p>
                 </button>

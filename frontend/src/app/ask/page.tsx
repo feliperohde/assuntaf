@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useProject } from '@/contexts/ProjectContext';
 import { useSidebar } from '@/components/Sidebar/SidebarProvider';
 import { ASK_HISTORY_EVENT, Answer, ConversationTurn, formatTimestamp, ragService } from '@/services/ragService';
+import { useI18n, type MessageKey } from '@/i18n';
 
 interface Message {
   question: string;
@@ -17,15 +18,12 @@ interface Message {
   error?: string;
 }
 
-const EXAMPLES = [
-  'What was discussed in the last meeting?',
-  'Why is ticket ABC-123 blocked?',
-  'On which day did we decide on the release date?',
-];
+const EXAMPLES: MessageKey[] = ['ask.example1', 'ask.example2', 'ask.example3'];
 
-const KIND_LABELS: Record<string, string> = { transcript: 'Transcript', summary: 'Summary', notes: 'Notes', fact: 'Recorded fact' };
+const KIND_LABELS: Record<string, MessageKey> = { transcript: 'kind.transcript', summary: 'kind.summary', notes: 'kind.notes', fact: 'kind.fact' };
 
 function AskContent() {
+  const { t } = useI18n();
   const router = useRouter();
   const searchParams = useSearchParams();
   const historyId = searchParams.get('history');
@@ -110,11 +108,11 @@ function AskContent() {
         <div className="max-w-4xl mx-auto px-8 py-6 flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold flex items-center gap-3">
-              <MessageSquareText className="w-7 h-7 text-gray-600" /> Ask
+              <MessageSquareText className="w-7 h-7 text-gray-600" /> {t('nav.ask')}
             </h1>
             <p className="text-sm text-gray-500 mt-1">
-              Questions about the meetings of <span className="font-medium">{activeProject?.name ?? 'this project'}</span>.
-              Switch project in the sidebar.
+              {t('ask.subtitleBefore')}<span className="font-medium">{activeProject?.name ?? t('ask.thisProject')}</span>
+              {t('ask.subtitleAfter')}
             </p>
           </div>
           {messages.length > 0 && (
@@ -122,7 +120,7 @@ function AskContent() {
                 setMessages(() => []);
                 if (historyId) router.replace('/ask');
               }} disabled={loading}>
-              <Trash2 className="w-4 h-4 mr-2" /> Clear
+              <Trash2 className="w-4 h-4 mr-2" /> {t('ask.clear')}
             </Button>
           )}
         </div>
@@ -132,9 +130,9 @@ function AskContent() {
         <div className="max-w-4xl mx-auto px-8 py-6 space-y-6">
           {messages.length === 0 && (
             <div className="text-center text-gray-500 py-12 space-y-4">
-              <p>Ask anything about what was said in this project&apos;s meetings.</p>
+              <p>{t('ask.empty')}</p>
               <div className="flex flex-wrap justify-center gap-2">
-                {EXAMPLES.map(example => (
+                {EXAMPLES.map(key => t(key)).map(example => (
                   <button
                     key={example}
                     onClick={() => ask(example)}
@@ -157,7 +155,7 @@ function AskContent() {
 
               {!message.answer && !message.error && (
                 <div className="flex items-center gap-2 text-sm text-gray-500">
-                  <Loader2 className="w-4 h-4 animate-spin" /> Searching meetings…
+                  <Loader2 className="w-4 h-4 animate-spin" /> {t('ask.searching')}
                 </div>
               )}
 
@@ -175,21 +173,20 @@ function AskContent() {
                     </div>
                   ) : (
                     <p className="text-sm text-gray-600">
-                      I couldn&apos;t find anything about this in this project&apos;s indexed meetings. If the meetings are
-                      recent or older than the index, try &quot;Reindex project&quot; on the Projects page.
+                      {t('ask.notFound')}
                     </p>
                   )}
 
                   {(message.answer.notice || message.answer.filtersRelaxed) && (
                     <p className="text-xs text-amber-700">
-                      {message.answer.filtersRelaxed && 'No meetings matched the dates or meeting in the question, so all meetings were searched. '}
-                      {message.answer.notice && `Semantic search unavailable (${message.answer.notice}); keyword matches only.`}
+                      {message.answer.filtersRelaxed && t('ask.filtersRelaxed') + ' '}
+                      {message.answer.notice && t('ask.semanticUnavailable', { reason: message.answer.notice })}
                     </p>
                   )}
 
                   {message.answer.citations.length > 0 && (
                     <div className="border-t border-gray-100 pt-3 space-y-2">
-                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Sources</p>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">{t('ask.sources')}</p>
                       {message.answer.citations.map(citation => {
                         const start = formatTimestamp(citation.startTime);
                         return (
@@ -204,7 +201,7 @@ function AskContent() {
                               <span>· {citation.meetingDate.slice(0, 10)}</span>
                               {start && <span>· {start}</span>}
                               <span className="ml-auto px-1.5 py-0.5 rounded bg-gray-100">
-                                {KIND_LABELS[citation.kind] ?? citation.kind}
+                                {KIND_LABELS[citation.kind] ? t(KIND_LABELS[citation.kind]) : citation.kind}
                               </span>
                             </div>
                             <p className="text-xs text-gray-600 mt-1 line-clamp-2">{citation.excerpt}</p>
@@ -233,7 +230,7 @@ function AskContent() {
                 ask(question);
               }
             }}
-            placeholder="Ask about this project's meetings… (Enter to send, Shift+Enter for a new line)"
+            placeholder={t('ask.placeholder')}
             className="resize-none"
           />
           <Button variant="blue" onClick={() => ask(question)} disabled={loading || !question.trim()} className="self-end">

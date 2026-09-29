@@ -13,23 +13,26 @@ import {
   formatTimestamp,
   ragService,
 } from '@/services/ragService';
+import { useI18n, type MessageKey } from '@/i18n';
 
-export const FACT_STYLES: Record<FactType, { label: string; className: string }> = {
-  blocker: { label: 'Blocker', className: 'bg-red-100 text-red-700' },
-  status: { label: 'Status', className: 'bg-blue-100 text-blue-700' },
-  decision: { label: 'Decision', className: 'bg-green-100 text-green-700' },
-  action: { label: 'Action', className: 'bg-amber-100 text-amber-800' },
+export const FACT_STYLES: Record<FactType, { label: MessageKey; className: string }> = {
+  blocker: { label: 'fact.blocker', className: 'bg-red-100 text-red-700' },
+  status: { label: 'fact.status', className: 'bg-blue-100 text-blue-700' },
+  decision: { label: 'fact.decision', className: 'bg-green-100 text-green-700' },
+  action: { label: 'fact.action', className: 'bg-amber-100 text-amber-800' },
 };
 
 type Tab = 'tickets' | 'decision' | 'action';
 
 export function FactBadge({ type }: { type: FactType }) {
+  const { t } = useI18n();
   const style = FACT_STYLES[type] ?? FACT_STYLES.status;
-  return <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${style.className}`}>{style.label}</span>;
+  return <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${style.className}`}>{t(style.label)}</span>;
 }
 
 /** Tickets, decisions and action items extracted from a project's meetings. */
 export function ProjectFactsPanel({ projectId }: { projectId: string }) {
+  const { t } = useI18n();
   const router = useRouter();
   const { setCurrentMeeting } = useSidebar();
   const [tab, setTab] = useState<Tab>('tickets');
@@ -98,7 +101,7 @@ export function ProjectFactsPanel({ projectId }: { projectId: string }) {
           <span className="font-medium text-gray-800">{fact.meetingTitle}</span>
           <span>· {fact.meetingDate.slice(0, 10)}</span>
           {time && <span>· {time}</span>}
-          {fact.owner && <span className="ml-auto">Owner: {fact.owner}</span>}
+          {fact.owner && <span className="ml-auto">{t('facts.owner', { name: fact.owner })}</span>}
         </div>
         <p className="text-sm text-gray-700">{fact.content}</p>
       </button>
@@ -106,9 +109,9 @@ export function ProjectFactsPanel({ projectId }: { projectId: string }) {
   };
 
   const TABS: { value: Tab; label: string }[] = [
-    { value: 'tickets', label: 'Tickets' },
-    { value: 'decision', label: 'Decisions' },
-    { value: 'action', label: 'Action items' },
+    { value: 'tickets', label: t('facts.tickets') },
+    { value: 'decision', label: t('facts.decisions') },
+    { value: 'action', label: t('facts.actions') },
   ];
 
   return (
@@ -129,7 +132,7 @@ export function ProjectFactsPanel({ projectId }: { projectId: string }) {
         <ul className="space-y-1">
           {tickets.length === 0 && (
             <li className="text-sm text-gray-400">
-              No tickets found yet. Tickets are extracted from indexed meetings (see Settings → Knowledge).
+              {t('facts.noTickets')}
             </li>
           )}
           {tickets.map(ticket => (
@@ -148,7 +151,7 @@ export function ProjectFactsPanel({ projectId }: { projectId: string }) {
                     <span className="font-mono font-semibold">{ticket.key}</span>
                     <FactBadge type={ticket.latestFactType} />
                     <span className="ml-auto text-xs text-gray-500">
-                      {ticket.lastMeetingDate.slice(0, 10)} · {ticket.factCount} mention(s)
+                      {t('facts.mentions', { date: ticket.lastMeetingDate.slice(0, 10), count: ticket.factCount })}
                     </span>
                   </div>
                   <p className="text-sm text-gray-600 mt-1 line-clamp-2">{ticket.latestContent}</p>
@@ -162,7 +165,7 @@ export function ProjectFactsPanel({ projectId }: { projectId: string }) {
         </ul>
       ) : (
         <div className="space-y-2">
-          {facts.length === 0 && <p className="text-sm text-gray-400">Nothing recorded yet.</p>}
+          {facts.length === 0 && <p className="text-sm text-gray-400">{t('facts.nothing')}</p>}
           {facts.map(fact => factLine(fact, false))}
         </div>
       )}

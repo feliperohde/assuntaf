@@ -9,6 +9,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { useI18n } from '@/i18n';
 
 interface EmptyStateSummaryProps {
   onGenerate: () => void;
@@ -23,6 +24,7 @@ export function EmptyStateSummary({
   isGenerating = false,
   error = null,
 }: EmptyStateSummaryProps) {
+  const { t } = useI18n();
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.95 }}
@@ -32,10 +34,10 @@ export function EmptyStateSummary({
     >
       <FileQuestion className="w-16 h-16 text-gray-300 mb-4" />
       <h3 className="text-lg font-semibold text-gray-900 mb-2">
-        No Summary Generated Yet
+        {t('summary.emptyTitle')}
       </h3>
       <p className="text-sm text-gray-500 mb-6 max-w-md">
-        Generate an AI-powered summary of your meeting transcript to get key points, action items, and decisions.
+        {t('summary.emptyHelp')}
       </p>
 
       {error && (
@@ -54,7 +56,7 @@ export function EmptyStateSummary({
                 className="gap-2"
               >
                 <Sparkles className="w-4 h-4" />
-                {isGenerating ? 'Generating...' : error ? 'Retry summary' : 'Generate Summary'}
+                {isGenerating ? 'Generating...' : error ? 'Retry summary' : t('summary.generate')}
               </Button>
             </div>
           </TooltipTrigger>
