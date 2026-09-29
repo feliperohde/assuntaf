@@ -13,18 +13,20 @@ import { BetaSettings } from '@/components/BetaSettings';
 import { RagSettings } from '@/components/RagSettings';
 import { useConfig } from '@/contexts/ConfigContext';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { useI18n, type MessageKey } from '@/i18n';
 
 // Tabs configuration (constant)
 const TABS = [
-  { value: 'general', label: 'General', icon: Settings2 },
-  { value: 'recording', label: 'Recordings', icon: Mic },
-  { value: 'Transcriptionmodels', label: 'Transcription', icon: DatabaseIcon },
-  { value: 'summaryModels', label: 'Summary', icon: SparkleIcon },
-  { value: 'knowledge', label: 'Knowledge', icon: BrainCircuit },
-  { value: 'beta', label: 'Beta', icon: FlaskConical }
-] as const;
+  { value: 'general', labelKey: 'settings.tab.general', icon: Settings2 },
+  { value: 'recording', labelKey: 'settings.tab.recording', icon: Mic },
+  { value: 'Transcriptionmodels', labelKey: 'settings.tab.transcription', icon: DatabaseIcon },
+  { value: 'summaryModels', labelKey: 'settings.tab.summary', icon: SparkleIcon },
+  { value: 'knowledge', labelKey: 'settings.tab.knowledge', icon: BrainCircuit },
+  { value: 'beta', labelKey: 'settings.tab.beta', icon: FlaskConical }
+] as const satisfies readonly { value: string; labelKey: MessageKey; icon: React.ElementType }[];
 
 export default function SettingsPage() {
+  const { t } = useI18n();
   const router = useRouter();
   const { transcriptModelConfig, setTranscriptModelConfig } = useConfig();
 
@@ -75,9 +77,9 @@ export default function SettingsPage() {
               className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
             >
               <ArrowLeft className="w-5 h-5" />
-              <span>Back</span>
+              <span>{t('common.back')}</span>
             </button>
-            <h1 className="text-3xl font-bold">Settings</h1>
+            <h1 className="text-3xl font-bold">{t('settings.title')}</h1>
           </div>
         </div>
       </div>
@@ -98,7 +100,7 @@ export default function SettingsPage() {
                     className="flex items-center gap-2 px-6 py-4 bg-transparent rounded-none border-0 data-[state=active]:bg-transparent data-[state=active]:text-blue-600 data-[state=active]:shadow-none text-gray-600 hover:text-gray-900 relative z-10"
                   >
                     <Icon className="w-4 h-4" />
-                    {tab.label}
+                    {t(tab.labelKey)}
                   </TabsTrigger>
                 );
               })}

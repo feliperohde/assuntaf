@@ -11,6 +11,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import Analytics from '@/lib/analytics';
 import { useRecordingState } from '@/contexts/RecordingStateContext';
 import type { TranscriptionErrorPayload } from '@/services/transcriptService';
+import { useI18n } from '@/i18n';
 
 interface RecordingControlsProps {
   isRecording: boolean;
@@ -42,6 +43,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
   selectedDevices,
   meetingName,
 }) => {
+  const { t } = useI18n();
   // Use global recording state context for pause state (syncs with tray operations)
   const recordingState = useRecordingState();
   const isPaused = recordingState.isPaused;
@@ -117,27 +119,27 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
       // Check for device-related errors
       if (errorMsg.includes('microphone') || errorMsg.includes('mic') || errorMsg.includes('input')) {
         setDeviceError({
-          title: 'Microphone Not Available',
-          message: 'Unable to access your microphone. Please check that:\n• Your microphone is connected\n• The app has microphone permissions\n• No other app is using the microphone'
+          title: t('rec.micUnavailable'),
+          message: t('rec.micUnavailableHelp')
         });
       } else if (errorMsg.includes('system audio') || errorMsg.includes('speaker') || errorMsg.includes('output')) {
         setDeviceError({
-          title: 'System Audio Not Available',
-          message: 'Unable to capture system audio. Please check that:\n• A virtual audio device (like BlackHole) is installed\n• The app has screen recording permissions (macOS)\n• System audio is properly configured'
+          title: t('rec.systemUnavailable'),
+          message: t('rec.systemUnavailableHelp')
         });
       } else if (errorMsg.includes('permission')) {
         setDeviceError({
-          title: 'Permission Required',
-          message: 'Recording permissions are required. Please:\n• Grant microphone access in System Settings\n• Grant screen recording access for system audio (macOS)\n• Restart the app after granting permissions'
+          title: t('rec.permissionRequired'),
+          message: t('rec.permissionHelp')
         });
       } else {
         setDeviceError({
-          title: 'Recording Failed',
-          message: 'Unable to start recording. Please check your audio device settings and try again.'
+          title: t('rec.failed'),
+          message: t('rec.failedHelp')
         });
       }
     }
-  }, [onRecordingStart, isStarting, isValidatingModel, selectedDevices, meetingName, isRecording]);
+  }, [onRecordingStart, isStarting, isValidatingModel, selectedDevices, meetingName, isRecording, t]);
 
   const stopRecordingAction = useCallback(async () => {
     console.log('Executing stop recording...');
@@ -338,7 +340,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
           {isProcessing && !isParentProcessing ? (
             <div className="flex items-center space-x-2">
               <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-900"></div>
-              <span className="text-sm text-gray-600">Processing recording...</span>
+              <span className="text-sm text-gray-600">{t('rec.processing')}</span>
             </div>
           ) : (
             <>
@@ -400,7 +402,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
                         </button>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p>Start recording</p>
+                        <p>{t('rec.start')}</p>
                       </TooltipContent>
                     </Tooltip>
                   ) : (
@@ -433,7 +435,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
                           </button>
                         </TooltipTrigger>
                         <TooltipContent>
-                          <p>{isPaused ? 'Resume recording' : 'Pause recording'}</p>
+                          <p>{isPaused ? t('rec.resume') : t('rec.pause')}</p>
                         </TooltipContent>
                       </Tooltip>
 
@@ -457,7 +459,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
                           </button>
                         </TooltipTrigger>
                         <TooltipContent>
-                          <p>Stop recording</p>
+                          <p>{t('rec.stop')}</p>
                         </TooltipContent>
                       </Tooltip>
                     </>
@@ -485,7 +487,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
         {/* Show validation status only */}
         {isValidatingModel && (
           <div className="text-xs text-gray-600 text-center mt-2">
-            Validating speech recognition...
+            {t('rec.validating')}
           </div>
         )}
 
@@ -496,7 +498,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
             <button
               onClick={() => setDeviceError(null)}
               className="absolute right-3 top-3 text-red-600 hover:text-red-800 transition-colors"
-              aria-label="Close alert"
+              aria-label={t('common.closeAlert')}
             >
               <X className="h-4 w-4" />
             </button>
