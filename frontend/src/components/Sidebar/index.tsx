@@ -5,6 +5,7 @@ import { ChevronDown, ChevronRight, File, Settings, ChevronLeftCircle, ChevronRi
 import { useRouter, usePathname } from 'next/navigation';
 import { useSidebar } from './SidebarProvider';
 import type { CurrentMeeting } from '@/components/Sidebar/SidebarProvider';
+import { SIDEBAR_COLLAPSED_WIDTH, SIDEBAR_DEFAULT_WIDTH } from '@/components/Sidebar/SidebarProvider';
 import { ConfirmationModal } from '../ConfirmationModel/confirmation-modal';
 import { ModelConfig } from '@/components/ModelSettingsModal';
 import { SettingTabs } from '../SettingTabs';
@@ -64,8 +65,30 @@ const Sidebar: React.FC = () => {
     isSearching,
     meetings,
     setMeetings,
-    serverAddress
+    serverAddress,
+    sidebarWidth,
+    setSidebarWidth,
+    isResizingSidebar,
+    setIsResizingSidebar,
   } = useSidebar();
+
+  // Drag the right edge to resize; double-click it to reset
+  const startResize = (event: React.MouseEvent) => {
+    event.preventDefault();
+    setIsResizingSidebar(true);
+    const onMove = (e: MouseEvent) => setSidebarWidth(e.clientX);
+    const onUp = () => {
+      setIsResizingSidebar(false);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
 
   // Get recording state from RecordingStateContext (single source of truth)
   const { isRecording } = useRecordingState();
@@ -684,42 +707,49 @@ const Sidebar: React.FC = () => {
                   </div>
                 )}
                 <span className="flex-1 break-words">{item.title}</span>
-                {isMeetingItem && (
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setMoveModalState({ isOpen: true, meetingId: item.id, targetProjectId: activeProjectId });
-                      }}
-                      className="hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 flex-shrink-0"
-                      aria-label="Move meeting to another project"
-                      title="Move to project"
-                    >
-                      <FolderInput className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleEditStart(item.id, item.title);
-                      }}
-                      className="hover:text-blue-600 p-1 rounded-md hover:bg-blue-50 flex-shrink-0"
-                      aria-label="Edit meeting title"
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setDeleteModalState({ isOpen: true, itemId: item.id });
-                      }}
-                      className="hover:text-red-600 p-1 rounded-md hover:bg-red-50 flex-shrink-0"
-                      aria-label="Delete meeting"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                )}
               </div>
+
+              {/* Meeting actions, below the title: always shown for the open meeting, on hover for others */}
+              {isMeetingItem && (
+                <div
+                  className={`ml-8 flex items-center gap-1 text-xs text-gray-500 overflow-hidden transition-all duration-150 ${
+                    isActive
+                      ? 'max-h-8 mt-1 opacity-100'
+                      : 'max-h-0 opacity-0 group-hover:max-h-8 group-hover:mt-1 group-hover:opacity-100 group-focus-within:max-h-8 group-focus-within:mt-1 group-focus-within:opacity-100'
+                  }`}
+                >
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMoveModalState({ isOpen: true, meetingId: item.id, targetProjectId: activeProjectId });
+                    }}
+                    className="flex items-center gap-1 px-1.5 py-0.5 rounded-md hover:text-blue-600 hover:bg-blue-50"
+                    aria-label="Move meeting to another project"
+                  >
+                    <FolderInput className="w-3.5 h-3.5" /> Move
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleEditStart(item.id, item.title);
+                    }}
+                    className="flex items-center gap-1 px-1.5 py-0.5 rounded-md hover:text-blue-600 hover:bg-blue-50"
+                    aria-label="Edit meeting title"
+                  >
+                    <Pencil className="w-3.5 h-3.5" /> Rename
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeleteModalState({ isOpen: true, itemId: item.id });
+                    }}
+                    className="flex items-center gap-1 px-1.5 py-0.5 rounded-md hover:text-red-600 hover:bg-red-50"
+                    aria-label="Delete meeting"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Delete
+                  </button>
+                </div>
+              )}
 
               {/* Show transcript match snippet if available */}
               {hasTranscriptMatch && (
@@ -755,8 +785,8 @@ const Sidebar: React.FC = () => {
       </button>
 
       <div
-        className={`h-screen bg-white border-r shadow-sm flex flex-col transition-all duration-300 ${isCollapsed ? 'w-16' : 'w-64'
-          }`}
+        className={`h-screen bg-white border-r shadow-sm flex flex-col ${isResizingSidebar ? '' : 'transition-all duration-300'}`}
+        style={{ width: isCollapsed ? SIDEBAR_COLLAPSED_WIDTH : sidebarWidth }}
       >
         {/*  Header with traffic light spacing */}
         <div className="flex-shrink-0 h-22 flex items-center">
@@ -906,6 +936,21 @@ const Sidebar: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Resize handle on the right edge */}
+      {!isCollapsed && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize sidebar"
+          title="Drag to resize · double-click to reset"
+          onMouseDown={startResize}
+          onDoubleClick={() => setSidebarWidth(SIDEBAR_DEFAULT_WIDTH)}
+          className={`absolute top-0 right-0 h-full w-1.5 cursor-col-resize transition-colors ${
+            isResizingSidebar ? 'bg-blue-400' : 'hover:bg-blue-300'
+          }`}
+        />
+      )}
 
       {/* Confirmation Modal for Delete */}
       <ConfirmationModal
