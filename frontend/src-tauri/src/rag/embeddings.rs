@@ -109,9 +109,14 @@ pub async fn probe_ollama(endpoint: Option<&str>, model: &str) -> OllamaProbe {
 
 fn connection_error(endpoint: &str, e: &reqwest::Error) -> anyhow::Error {
     if e.is_connect() || e.is_timeout() {
+        let lan_hint = if cfg!(target_os = "macos") && !endpoint.contains("localhost") && !endpoint.contains("127.0.0.1") {
+            " On macOS, also allow Local Network access for Assunta (or your terminal, in dev mode) in System Settings → Privacy & Security → Local Network."
+        } else {
+            ""
+        };
         anyhow!(
             "Cannot connect to Ollama at {endpoint}. Is it running and reachable? \
-             (a remote Ollama must listen on the network: OLLAMA_HOST=0.0.0.0)"
+             (a remote Ollama must listen on the network: OLLAMA_HOST=0.0.0.0){lan_hint}"
         )
     } else {
         anyhow!("Ollama request to {endpoint} failed: {e}")
