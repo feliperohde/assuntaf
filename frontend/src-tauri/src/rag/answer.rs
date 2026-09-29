@@ -73,6 +73,8 @@ pub struct Answer {
     pub filters_relaxed: bool,
     /// Set when semantic search was unavailable (keyword results only).
     pub notice: Option<String>,
+    /// Id in the Ask history, once saved.
+    pub history_id: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -450,6 +452,7 @@ pub async fn ask_project(
             plan,
             filters_relaxed,
             notice,
+            history_id: None,
         });
     }
 
@@ -482,7 +485,7 @@ pub async fn ask_project(
         })
         .collect();
 
-    Ok(Answer { answer, found: true, citations, plan, filters_relaxed, notice })
+    Ok(Answer { answer, found: true, citations, plan, filters_relaxed, notice, history_id: None })
 }
 
 #[cfg(test)]

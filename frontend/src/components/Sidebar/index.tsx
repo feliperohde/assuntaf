@@ -20,6 +20,7 @@ import { useConfig } from '@/contexts/ConfigContext';
 import { useProject } from '@/contexts/ProjectContext';
 import { projectService } from '@/services/projectService';
 import { ProjectSelector } from './ProjectSelector';
+import { SidebarKnowledge } from '@/components/Knowledge/SidebarKnowledge';
 import {
   Select,
   SelectContent,
@@ -849,6 +850,12 @@ const Sidebar: React.FC = () => {
               >
                 <MessageSquareText className="w-4 h-4 mr-2" />
                 <span>Ask</span>
+              </div>
+            )}
+            {!isCollapsed && (
+              // Capped so open sections never push the meeting list off screen
+              <div className="max-h-[40vh] overflow-y-auto custom-scrollbar">
+                <SidebarKnowledge />
               </div>
             )}
           </div>

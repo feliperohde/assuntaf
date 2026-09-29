@@ -3,7 +3,8 @@ use serde::Deserialize;
 use tauri::{AppHandle, Runtime};
 
 use super::answer::{ask_project, Answer, ConversationTurn};
-use super::entities::{facts_by_type, list_tickets, ticket_facts, FactRow, TicketSummary};
+use super::entities::{facts_by_type, facts_page, list_tickets, ticket_facts, tickets_page, FactRow, TicketSummary};
+use super::history::{self, AskHistoryEntry, AskHistoryItem, Page};
 use super::embeddings::{probe_ollama, OllamaProbe};
 use super::indexer::{embedder_from_config, index_meeting_with_app, resolve_endpoint, IndexOutcome};
 use super::llm::ConfiguredChatModel;
@@ -144,7 +145,7 @@ pub async fn rag_ask<R: Runtime>(
         .await
         .map_err(|e| err("prepare the language model", e))?;
     info!("RAG: answering question for project {}", request.project_id);
-    ask_project(
+    let mut answer = ask_project(
         pool,
         embedder.as_ref(),
         &llm,
@@ -154,7 +155,79 @@ pub async fn rag_ask<R: Runtime>(
         chrono::Local::now().date_naive(),
     )
     .await
-    .map_err(|e| err("answer the question", e))
+    .map_err(|e| err("answer the question", e))?;
+    // History is a convenience: a failed save must not lose the answer
+    match history::save(pool, &request.project_id, &request.question, &answer).await {
+        Ok(id) => answer.history_id = Some(id),
+        Err(e) => error!("RAG: failed to save question to history: {}", e),
+    }
+    Ok(answer)
+}
+
+const MAX_PAGE_SIZE: i64 = 100;
+
+fn page_bounds(limit: Option<i64>, offset: Option<i64>) -> (i64, i64) {
+    (limit.unwrap_or(10).clamp(1, MAX_PAGE_SIZE), offset.unwrap_or(0).max(0))
+}
+
+/// Questions asked about a project, newest first.
+#[tauri::command]
+pub async fn rag_ask_history(
+    state: tauri::State<'_, AppState>,
+    project_id: String,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> Result<Page<AskHistoryEntry>, String> {
+    let (limit, offset) = page_bounds(limit, offset);
+    history::page(state.db_manager.pool(), &project_id, limit, offset)
+        .await
+        .map_err(|e| err("load question history", e))
+}
+
+#[tauri::command]
+pub async fn rag_ask_history_item(
+    state: tauri::State<'_, AppState>,
+    id: String,
+) -> Result<Option<AskHistoryItem>, String> {
+    history::get(state.db_manager.pool(), &id)
+        .await
+        .map_err(|e| err("load saved answer", e))
+}
+
+#[tauri::command]
+pub async fn rag_delete_ask_history(state: tauri::State<'_, AppState>, id: String) -> Result<bool, String> {
+    history::delete(state.db_manager.pool(), &id)
+        .await
+        .map_err(|e| err("delete saved answer", e))
+}
+
+/// One page of a project's tickets, most recently discussed first.
+#[tauri::command]
+pub async fn rag_tickets_page(
+    state: tauri::State<'_, AppState>,
+    project_id: String,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> Result<Page<TicketSummary>, String> {
+    let (limit, offset) = page_bounds(limit, offset);
+    tickets_page(state.db_manager.pool(), &project_id, limit, offset)
+        .await
+        .map_err(|e| err("list tickets", e))
+}
+
+/// One page of a project's facts of one type (decision, action…), newest first.
+#[tauri::command]
+pub async fn rag_facts_page(
+    state: tauri::State<'_, AppState>,
+    project_id: String,
+    fact_type: String,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> Result<Page<FactRow>, String> {
+    let (limit, offset) = page_bounds(limit, offset);
+    facts_page(state.db_manager.pool(), &project_id, &fact_type, limit, offset)
+        .await
+        .map_err(|e| err("list facts", e))
 }
 
 /// Tickets discussed in a project's meetings, with their latest recorded fact.
