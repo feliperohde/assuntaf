@@ -120,19 +120,43 @@ fn root_cause(e: &reqwest::Error) -> String {
 
 fn connection_error(endpoint: &str, e: &reqwest::Error) -> anyhow::Error {
     if e.is_connect() || e.is_timeout() {
-        let lan_hint = if cfg!(target_os = "macos") && !endpoint.contains("localhost") && !endpoint.contains("127.0.0.1") {
-            " On macOS, also allow Local Network access for Assunta (or your terminal, in dev mode) in System Settings → Privacy & Security → Local Network."
-        } else {
-            ""
-        };
-        anyhow!(
-            "Cannot connect to Ollama at {endpoint}: {cause}. Is it running and reachable? \
-             (a remote Ollama must listen on the network: OLLAMA_HOST=0.0.0.0){lan_hint}",
-            cause = root_cause(e)
-        )
+        anyhow!(connection_error_message(endpoint, &root_cause(e), cfg!(target_os = "macos")))
     } else {
         anyhow!("Ollama request to {endpoint} failed: {e}")
     }
+}
+
+/// Explains a failed connection. On macOS, "No route to host" (EHOSTUNREACH, os
+/// error 65) to a LAN address while the server answers `curl` means the system's
+/// Local Network privacy blocked this app. An unbundled dev binary cannot be granted
+/// that permission, so the message offers the two things that work.
+pub fn connection_error_message(endpoint: &str, cause: &str, macos: bool) -> String {
+    let host = url::Url::parse(endpoint)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_string))
+        .unwrap_or_default();
+    let remote = !host.is_empty() && host != "localhost" && host != "127.0.0.1" && host != "::1";
+    let blocked_by_macos = macos && remote && (cause.contains("os error 65") || cause.contains("No route to host"));
+
+    if blocked_by_macos {
+        let port = url::Url::parse(endpoint).ok().and_then(|u| u.port_or_known_default()).unwrap_or(11434);
+        return format!(
+            "Cannot connect to Ollama at {endpoint}: {cause}. macOS is blocking this app's access to the \
+             local network (Local Network privacy). Either run the packaged Assunta app (./build-gpu.sh) and \
+             allow the \"find devices on your local network\" prompt, or forward the port from your terminal and \
+             use \"localhost\" as the server: socat TCP-LISTEN:{port},fork,reuseaddr TCP:{host}:{port}"
+        );
+    }
+
+    let lan_hint = if macos && remote {
+        " On macOS, also allow Local Network access for Assunta in System Settings → Privacy & Security → Local Network."
+    } else {
+        ""
+    };
+    format!(
+        "Cannot connect to Ollama at {endpoint}: {cause}. Is it running and reachable? \
+         (a remote Ollama must listen on the network: OLLAMA_HOST=0.0.0.0){lan_hint}"
+    )
 }
 
 impl OllamaEmbedder {
@@ -253,6 +277,21 @@ mod tests {
         let error = embedder.embed(&["a".into()]).await.unwrap_err().to_string();
         assert!(error.contains("ollama pull bge-m3"), "{error}");
         assert!(error.contains(&endpoint.trim_end_matches('/').to_string()), "{error}");
+    }
+
+    #[test]
+    fn macos_local_network_block_gets_actionable_message() {
+        let msg = connection_error_message("http://192.168.3.16:11434", "No route to host (os error 65)", true);
+        assert!(msg.contains("Local Network privacy"), "{msg}");
+        assert!(msg.contains("socat TCP-LISTEN:11434,fork,reuseaddr TCP:192.168.3.16:11434"), "{msg}");
+
+        // Same cause elsewhere, or a refused connection, gets the generic advice
+        let other_os = connection_error_message("http://192.168.3.16:11434", "No route to host (os error 113)", false);
+        assert!(other_os.contains("OLLAMA_HOST=0.0.0.0") && !other_os.contains("socat"));
+        let refused = connection_error_message("http://192.168.3.16:11434", "Connection refused (os error 61)", true);
+        assert!(refused.contains("OLLAMA_HOST=0.0.0.0") && refused.contains("Local Network"));
+        let local = connection_error_message("http://localhost:11434", "Connection refused (os error 61)", true);
+        assert!(!local.contains("Local Network"));
     }
 
     #[test]

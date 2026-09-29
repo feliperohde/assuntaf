@@ -15,7 +15,7 @@ import {
 } from '@/services/ragService';
 import { useI18n, type MessageKey } from '@/i18n';
 
-const FACT_STYLES: Record<FactType, { label: MessageKey; className: string }> = {
+export const FACT_STYLES: Record<FactType, { label: MessageKey; className: string }> = {
   blocker: { label: 'fact.blocker', className: 'bg-red-100 text-red-700' },
   status: { label: 'fact.status', className: 'bg-blue-100 text-blue-700' },
   decision: { label: 'fact.decision', className: 'bg-green-100 text-green-700' },
@@ -24,7 +24,7 @@ const FACT_STYLES: Record<FactType, { label: MessageKey; className: string }> = 
 
 type Tab = 'tickets' | 'decision' | 'action';
 
-function FactBadge({ type }: { type: FactType }) {
+export function FactBadge({ type }: { type: FactType }) {
   const { t } = useI18n();
   const style = FACT_STYLES[type] ?? FACT_STYLES.status;
   return <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${style.className}`}>{t(style.label)}</span>;

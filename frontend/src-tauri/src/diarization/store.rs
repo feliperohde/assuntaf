@@ -19,6 +19,9 @@ pub struct MeetingSpeaker {
     pub member_id: Option<String>,
     pub member_name: Option<String>,
     pub speaking_seconds: f64,
+    /// 'voice', 'inferred' or 'manual'; None while the speaker is unnamed.
+    pub name_source: Option<String>,
+    pub name_evidence: Option<String>,
 }
 
 impl MeetingSpeaker {
@@ -112,8 +115,8 @@ impl SpeakerStore {
         for (i, speaker) in speakers.iter().enumerate() {
             let id = format!("speaker-{}", Uuid::new_v4());
             sqlx::query(
-                "INSERT INTO meeting_speakers (id, meeting_id, label, member_id, centroid, speaking_seconds, created_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO meeting_speakers (id, meeting_id, label, member_id, centroid, speaking_seconds, created_at, name_source)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             )
             .bind(&id)
             .bind(meeting_id)
@@ -122,6 +125,7 @@ impl SpeakerStore {
             .bind(encode_vector(&speaker.centroid))
             .bind(speaker.speaking_seconds)
             .bind(now)
+            .bind(members[i].as_ref().map(|_| "voice"))
             .execute(&mut *tx)
             .await?;
             ids.push(id);
@@ -143,30 +147,33 @@ impl SpeakerStore {
 
     pub async fn list(pool: &SqlitePool, meeting_id: &str) -> Result<Vec<MeetingSpeaker>, sqlx::Error> {
         sqlx::query_as(
-            "SELECT s.id, s.label, s.member_id, pm.name AS member_name, s.speaking_seconds
+            "SELECT s.id, s.label, s.member_id, pm.name AS member_name, s.speaking_seconds,
+                    s.name_source, s.name_evidence
              FROM meeting_speakers s LEFT JOIN project_members pm ON pm.id = s.member_id
-             WHERE s.meeting_id = ? ORDER BY s.label",
+             WHERE s.meeting_id = ? ORDER BY s.rowid",
         )
         .bind(meeting_id)
         .fetch_all(pool)
         .await
     }
 
-    /// Renames a speaker and/or links it to a project member. Linking also teaches
-    /// the member's voiceprint (running average of assigned centroids).
-    /// Returns the speaker's meeting id.
+    /// Renames a speaker and/or links it to a project member (the user's choice,
+    /// so the name becomes 'manual'). Linking also teaches the member's voiceprint
+    /// (running average of assigned centroids), as does confirming a link that
+    /// was only inferred. Returns the speaker's meeting id.
     pub async fn update(
         pool: &SqlitePool,
         speaker_id: &str,
         label: Option<&str>,
         member_id: Option<&str>,
     ) -> Result<String, sqlx::Error> {
-        let row: Option<(String, Option<Vec<u8>>, Option<String>)> =
-            sqlx::query_as("SELECT meeting_id, centroid, member_id FROM meeting_speakers WHERE id = ?")
-                .bind(speaker_id)
-                .fetch_optional(pool)
-                .await?;
-        let (meeting_id, centroid, previous_member) = row.ok_or(sqlx::Error::RowNotFound)?;
+        let row: Option<(String, Option<Vec<u8>>, Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT meeting_id, centroid, member_id, name_source FROM meeting_speakers WHERE id = ?",
+        )
+        .bind(speaker_id)
+        .fetch_optional(pool)
+        .await?;
+        let (meeting_id, centroid, previous_member, previous_source) = row.ok_or(sqlx::Error::RowNotFound)?;
 
         let mut conn = pool.acquire().await?;
         let mut tx = conn.begin().await?;
@@ -177,13 +184,14 @@ impl SpeakerStore {
                 .execute(&mut *tx)
                 .await?;
         }
-        sqlx::query("UPDATE meeting_speakers SET member_id = ? WHERE id = ?")
+        sqlx::query("UPDATE meeting_speakers SET member_id = ?, name_source = 'manual', name_evidence = NULL WHERE id = ?")
             .bind(member_id)
             .bind(speaker_id)
             .execute(&mut *tx)
             .await?;
 
-        let newly_linked = member_id.filter(|m| previous_member.as_deref() != Some(*m));
+        let confirmed_guess = previous_source.as_deref() == Some("inferred");
+        let newly_linked = member_id.filter(|m| previous_member.as_deref() != Some(*m) || confirmed_guess);
         if let (Some(member_id), Some(centroid)) = (newly_linked, centroid) {
             let member: Option<(Option<Vec<u8>>, i64)> =
                 sqlx::query_as("SELECT voiceprint, voiceprint_samples FROM project_members WHERE id = ?")
@@ -205,6 +213,68 @@ impl SpeakerStore {
                 .execute(&mut *tx)
                 .await?;
         }
+        tx.commit().await?;
+        Ok(meeting_id)
+    }
+    /// Names a speaker from an LLM guess. Never overrides a name the user set or
+    /// a voice recognition; does not touch voiceprints (a guess is not proof).
+    pub async fn apply_inferred_name(
+        pool: &SqlitePool,
+        speaker_id: &str,
+        name: &str,
+        member_id: Option<&str>,
+        evidence: &str,
+    ) -> Result<bool, sqlx::Error> {
+        let result = sqlx::query(
+            "UPDATE meeting_speakers SET label = ?, member_id = ?, name_source = 'inferred', name_evidence = ?
+             WHERE id = ? AND (name_source IS NULL OR name_source = 'inferred')",
+        )
+        .bind(name)
+        .bind(member_id)
+        .bind(evidence)
+        .bind(speaker_id)
+        .execute(pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Folds speaker `from` into `into` (same meeting): their transcript lines,
+    /// speaking time and voice centroid (weighted by speaking time).
+    pub async fn merge(pool: &SqlitePool, into: &str, from: &str) -> Result<String, sqlx::Error> {
+        type Row = (String, Option<Vec<u8>>, f64);
+        let load = |id: &str| {
+            sqlx::query_as::<_, Row>("SELECT meeting_id, centroid, speaking_seconds FROM meeting_speakers WHERE id = ?")
+                .bind(id.to_string())
+                .fetch_optional(pool)
+        };
+        let (meeting_id, into_centroid, into_seconds) = load(into).await?.ok_or(sqlx::Error::RowNotFound)?;
+        let (from_meeting, from_centroid, from_seconds) = load(from).await?.ok_or(sqlx::Error::RowNotFound)?;
+        if from_meeting != meeting_id || into == from {
+            return Err(sqlx::Error::Protocol("speakers must be two different speakers of the same meeting".into()));
+        }
+        let centroid = match (into_centroid.map(|c| decode_vector(&c)), from_centroid.map(|c| decode_vector(&c))) {
+            (Some(a), Some(b)) if a.len() == b.len() => {
+                let (wa, wb) = (into_seconds.max(0.1) as f32, from_seconds.max(0.1) as f32);
+                Some(a.iter().zip(&b).map(|(x, y)| (x * wa + y * wb) / (wa + wb)).collect::<Vec<f32>>())
+            }
+            (a, b) => a.or(b),
+        };
+
+        let mut conn = pool.acquire().await?;
+        let mut tx = conn.begin().await?;
+        sqlx::query("UPDATE transcripts SET speaker_id = ? WHERE speaker_id = ? AND meeting_id = ?")
+            .bind(into)
+            .bind(from)
+            .bind(&meeting_id)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("UPDATE meeting_speakers SET speaking_seconds = ?, centroid = ? WHERE id = ?")
+            .bind(into_seconds + from_seconds)
+            .bind(centroid.map(|c| encode_vector(&c)))
+            .bind(into)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DELETE FROM meeting_speakers WHERE id = ?").bind(from).execute(&mut *tx).await?;
         tx.commit().await?;
         Ok(meeting_id)
     }

@@ -399,7 +399,24 @@ pub struct TicketSummary {
 
 /// Tickets of a project with their most recent fact, most recently discussed first.
 pub async fn list_tickets(pool: &SqlitePool, project_id: &str) -> Result<Vec<TicketSummary>, sqlx::Error> {
-    sqlx::query_as(
+    Ok(tickets_page(pool, project_id, -1, 0).await?.items)
+}
+
+/// One page of `list_tickets` (limit -1 = all) and the total count.
+pub async fn tickets_page(
+    pool: &SqlitePool,
+    project_id: &str,
+    limit: i64,
+    offset: i64,
+) -> Result<super::history::Page<TicketSummary>, sqlx::Error> {
+    let (total,): (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM entities e WHERE e.project_id = ? AND e.entity_type = 'ticket'
+         AND EXISTS (SELECT 1 FROM entity_facts f WHERE f.entity_id = e.id)",
+    )
+    .bind(project_id)
+    .fetch_one(pool)
+    .await?;
+    let items = sqlx::query_as(
         "SELECT e.id AS entity_id, e.key,
                 (SELECT COUNT(*) FROM entity_facts f WHERE f.entity_id = e.id) AS fact_count,
                 l.meeting_date AS last_meeting_date, l.fact_type AS latest_fact_type, l.content AS latest_content
@@ -408,11 +425,42 @@ pub async fn list_tickets(pool: &SqlitePool, project_id: &str) -> Result<Vec<Tic
              SELECT f.id FROM entity_facts f WHERE f.entity_id = e.id
              ORDER BY f.meeting_date DESC, f.start_time DESC LIMIT 1)
          WHERE e.project_id = ? AND e.entity_type = 'ticket'
-         ORDER BY l.meeting_date DESC, e.key",
+         ORDER BY l.meeting_date DESC, e.key
+         LIMIT ? OFFSET ?",
     )
     .bind(project_id)
+    .bind(limit)
+    .bind(offset)
     .fetch_all(pool)
-    .await
+    .await?;
+    Ok(super::history::Page { items, total })
+}
+
+/// One page of facts of a single type (decision, action, …), newest first, and the total count.
+pub async fn facts_page(
+    pool: &SqlitePool,
+    project_id: &str,
+    fact_type: &str,
+    limit: i64,
+    offset: i64,
+) -> Result<super::history::Page<FactRow>, sqlx::Error> {
+    let (total,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM entity_facts WHERE project_id = ? AND fact_type = ?")
+            .bind(project_id)
+            .bind(fact_type)
+            .fetch_one(pool)
+            .await?;
+    let items = sqlx::query_as(&format!(
+        "{FACT_SELECT} WHERE f.project_id = ? AND f.fact_type = ?
+         ORDER BY f.meeting_date DESC, f.start_time DESC LIMIT ? OFFSET ?"
+    ))
+    .bind(project_id)
+    .bind(fact_type)
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(pool)
+    .await?;
+    Ok(super::history::Page { items, total })
 }
 
 /// All facts about one ticket, newest first.
@@ -549,6 +597,12 @@ mod tests {
         assert_eq!(tickets[0].fact_count, 2);
         assert_eq!(tickets[0].latest_fact_type, "status");
         assert_eq!(ticket_facts(&pool, &tickets[0].entity_id).await.unwrap().len(), 2);
+
+        let tickets = tickets_page(&pool, "p1", 1, 0).await.unwrap();
+        assert_eq!((tickets.total, tickets.items.len()), (1, 1));
+        assert!(tickets_page(&pool, "p1", 10, 1).await.unwrap().items.is_empty());
+        let blockers = facts_page(&pool, "p1", "blocker", 10, 0).await.unwrap();
+        assert_eq!((blockers.total, blockers.items.len()), (1, 1));
 
         let decisions = facts_by_type(&pool, "p1", &["decision".into()], None, Some("2026-09-25"), None, 10)
             .await

@@ -20,6 +20,7 @@ import { useConfig } from '@/contexts/ConfigContext';
 import { useProject } from '@/contexts/ProjectContext';
 import { projectService } from '@/services/projectService';
 import { ProjectSelector } from './ProjectSelector';
+import { SidebarKnowledge } from '@/components/Knowledge/SidebarKnowledge';
 import {
   Select,
   SelectContent,
@@ -791,7 +792,7 @@ const Sidebar: React.FC = () => {
         style={{ width: isCollapsed ? SIDEBAR_COLLAPSED_WIDTH : sidebarWidth }}
       >
         {/*  Header with traffic light spacing */}
-        <div className="flex-shrink-0 h-22 flex items-center">
+        <div className="flex-shrink-0 flex items-start">
 
           {/* Title container */}
 
@@ -851,6 +852,12 @@ const Sidebar: React.FC = () => {
               >
                 <MessageSquareText className="w-4 h-4 mr-2" />
                 <span>{t('nav.ask')}</span>
+              </div>
+            )}
+            {!isCollapsed && (
+              // Capped so open sections never push the meeting list off screen
+              <div className="max-h-[40vh] overflow-y-auto custom-scrollbar">
+                <SidebarKnowledge />
               </div>
             )}
           </div>
