@@ -804,7 +804,54 @@ const Sidebar: React.FC = () => {
                 {/* <span className="text-lg text-center border rounded-full bg-blue-50 border-white font-semibold text-gray-700 mb-2 block items-center">
                   <span>Assunta</span>
                 </span> */}
-                <Logo isCollapsed={isCollapsed} />
+                <div className="flex items-center gap-1 mb-2">
+                  <div className="flex-1 min-w-0">
+                    <Logo isCollapsed={isCollapsed} />
+                  </div>
+                  <TooltipProvider delayDuration={300}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          onClick={handleRecordingToggle}
+                          disabled={isRecording}
+                          aria-label={isRecording ? t('sidebar.recordingInProgress') : t('sidebar.startRecording')}
+                          className={`w-8 h-8 flex items-center justify-center rounded-full text-white shadow-sm transition-colors ${isRecording ? 'bg-red-400 cursor-not-allowed animate-pulse' : 'bg-red-500 hover:bg-red-600'}`}
+                        >
+                          {isRecording ? <Square className="w-3.5 h-3.5" /> : <Mic className="w-4 h-4" />}
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">
+                        {isRecording ? t('sidebar.recordingInProgress') : t('sidebar.startRecording')}
+                      </TooltipContent>
+                    </Tooltip>
+                    {betaFeatures.importAndRetranscribe && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            onClick={() => openImportDialog()}
+                            aria-label={t('nav.importAudio')}
+                            className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
+                          >
+                            <Upload className="w-4 h-4" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">{t('nav.importAudio')}</TooltipContent>
+                      </Tooltip>
+                    )}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          onClick={() => router.push('/settings')}
+                          aria-label={t('nav.settings')}
+                          className={`w-8 h-8 flex items-center justify-center rounded-lg text-gray-600 transition-colors ${pathname === '/settings' ? 'bg-gray-100 text-gray-900' : 'hover:bg-gray-100'}`}
+                        >
+                          <Settings className="w-4 h-4" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">{t('nav.settings')}</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
 
                 <ProjectSelector />
 
@@ -899,51 +946,6 @@ const Sidebar: React.FC = () => {
           </div>
         </div>
 
-        {/* Footer */}
-        {!isCollapsed && (
-
-          <div className="flex-shrink-0 p-2 border-t border-gray-100">
-            <button
-              onClick={handleRecordingToggle}
-              disabled={isRecording}
-              className={`w-full flex items-center justify-center px-3 py-2 text-sm font-medium text-white ${isRecording ? 'bg-red-300 cursor-not-allowed' : 'bg-red-500 hover:bg-red-600'} rounded-lg transition-colors shadow-sm`}
-            >
-              {isRecording ? (
-                <>
-                  <Square className="w-4 h-4 mr-2" />
-                  <span>{t('sidebar.recordingInProgress')}</span>
-                </>
-              ) : (
-                <>
-                  <Mic className="w-4 h-4 mr-2" />
-                  <span>{t('sidebar.startRecording')}</span>
-                </>
-              )}
-            </button>
-
-            {betaFeatures.importAndRetranscribe && (
-              <button
-                onClick={() => openImportDialog()}
-                className="w-full flex items-center justify-center px-3 py-2 mt-1 text-sm font-medium text-gray-700 bg-blue-100 hover:bg-blue-200 rounded-lg transition-colors shadow-sm"
-              >
-                <Upload className="w-4 h-4 mr-2" />
-                <span>{t('nav.importAudio')}</span>
-              </button>
-            )}
-
-            <button
-              onClick={() => router.push('/settings')}
-              className="w-full flex items-center justify-center px-3 py-1.5 mt-1 mb-1 text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg transition-colors shadow-sm"
-            >
-              <Settings className="w-4 h-4 mr-2" />
-              <span>{t('nav.settings')}</span>
-            </button>
-            <Info isCollapsed={isCollapsed} />
-            <div className="w-full flex items-center justify-center px-3 py-1 text-xs text-gray-400">
-              v0.4.1
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Resize handle on the right edge */}
