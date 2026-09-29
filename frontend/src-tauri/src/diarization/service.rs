@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use tokio::sync::Mutex;
 
 use super::cluster::assign_speakers;
-use super::engine::{diarize, ensure_models, models_dir};
+use super::engine::{diarize, ensure_models, models_dir, DiarizeOptions};
 use super::store::{MeetingSpeaker, NewSpeaker, SpeakerStore};
 use crate::audio::decoder::decode_audio_file;
 use crate::audio::retranscription::find_audio_file;
@@ -48,7 +48,23 @@ pub async fn has_audio(pool: &SqlitePool, meeting_id: &str) -> bool {
     meeting_audio(pool, meeting_id).await.is_ok()
 }
 
-pub async fn diarize_meeting(pool: &SqlitePool, app_data_dir: &Path, meeting_id: &str) -> Result<DiarizeOutcome> {
+/// Speakers that received at least one transcript line, in order, and the
+/// old → new index mapping (None for dropped speakers).
+fn keep_speakers_with_lines(count: usize, assigned: &[Option<usize>]) -> (Vec<usize>, Vec<Option<usize>>) {
+    let kept: Vec<usize> = (0..count).filter(|s| assigned.contains(&Some(*s))).collect();
+    let mut remap = vec![None; count];
+    for (new, &old) in kept.iter().enumerate() {
+        remap[old] = Some(new);
+    }
+    (kept, remap)
+}
+
+pub async fn diarize_meeting(
+    pool: &SqlitePool,
+    app_data_dir: &Path,
+    meeting_id: &str,
+    options: DiarizeOptions,
+) -> Result<DiarizeOutcome> {
     let _guard = DIARIZE_LOCK.lock().await;
 
     let audio_path = meeting_audio(pool, meeting_id).await?;
@@ -59,7 +75,7 @@ pub async fn diarize_meeting(pool: &SqlitePool, app_data_dir: &Path, meeting_id:
     let result = tokio::task::spawn_blocking(move || -> Result<_> {
         let decoded = decode_audio_file(&audio_path)?;
         let audio = decoded.to_whisper_format();
-        diarize(&audio, &models)
+        diarize(&audio, &models, &options)
     })
     .await
     .map_err(|e| anyhow!("Diarization task failed: {e}"))??;
@@ -72,17 +88,17 @@ pub async fn diarize_meeting(pool: &SqlitePool, app_data_dir: &Path, meeting_id:
     .await?;
     let times: Vec<(Option<f64>, Option<f64>)> = segments.iter().map(|(_, s, e)| (*s, *e)).collect();
     let assigned = assign_speakers(&times, &result.turns, MAX_ASSIGN_DISTANCE_SECONDS);
+    // Voices that got no transcript line (noise, music, crosstalk) are not listed
+    let (kept, remap) = keep_speakers_with_lines(result.centroids.len(), &assigned);
     let segment_speakers: Vec<(String, Option<usize>)> = segments
         .iter()
         .zip(assigned)
-        .map(|((id, _, _), speaker)| (id.clone(), speaker))
+        .map(|((id, _, _), speaker)| (id.clone(), speaker.and_then(|s| remap[s])))
         .collect();
 
-    let speakers: Vec<NewSpeaker> = result
-        .centroids
+    let speakers: Vec<NewSpeaker> = kept
         .iter()
-        .zip(&result.speaking_seconds)
-        .map(|(centroid, seconds)| NewSpeaker { centroid: centroid.clone(), speaking_seconds: *seconds })
+        .map(|&s| NewSpeaker { centroid: result.centroids[s].clone(), speaking_seconds: result.speaking_seconds[s] })
         .collect();
     let stored = SpeakerStore::save(pool, meeting_id, &speakers, &segment_speakers).await?;
 
@@ -100,4 +116,16 @@ pub async fn diarize_meeting(pool: &SqlitePool, app_data_dir: &Path, meeting_id:
         assigned_segments,
         total_segments: segment_speakers.len(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn speakers_without_lines_are_dropped_and_renumbered() {
+        let (kept, remap) = keep_speakers_with_lines(4, &[Some(0), Some(2), None, Some(2)]);
+        assert_eq!(kept, vec![0, 2]);
+        assert_eq!(remap, vec![Some(0), None, Some(1), None]);
+    }
 }

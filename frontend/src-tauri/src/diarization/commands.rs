@@ -1,6 +1,7 @@
 use log::error;
 use tauri::{AppHandle, Manager, Runtime};
 
+use super::engine::DiarizeOptions;
 use super::service::{diarize_meeting as run_diarization, DiarizeOutcome};
 use super::store::{MeetingSpeaker, SpeakerStore};
 use crate::rag::indexer::{schedule_meeting_index_with, IndexOptions};
@@ -12,15 +13,18 @@ fn err(action: &str, e: impl std::fmt::Display) -> String {
 }
 
 /// Detects who spoke when in a meeting's recording (downloads the models on first
+/// use; `num_speakers` pins the number of people when the user knows it
 /// use), then reindexes the meeting so passages carry speaker names.
 #[tauri::command]
 pub async fn diarize_meeting<R: Runtime>(
     app: AppHandle<R>,
     state: tauri::State<'_, AppState>,
     meeting_id: String,
+    num_speakers: Option<usize>,
 ) -> Result<DiarizeOutcome, String> {
     let app_data_dir = app.path().app_data_dir().map_err(|e| err("locate app data", e))?;
-    let outcome = run_diarization(state.db_manager.pool(), &app_data_dir, &meeting_id)
+    let options = DiarizeOptions { num_speakers: num_speakers.filter(|&n| n > 0), ..Default::default() };
+    let outcome = run_diarization(state.db_manager.pool(), &app_data_dir, &meeting_id, options)
         .await
         .map_err(|e| err("detect speakers", e))?;
     schedule_meeting_index_with(app, meeting_id, IndexOptions { diarize: false, extract_facts: true });
