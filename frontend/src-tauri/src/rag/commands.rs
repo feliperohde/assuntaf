@@ -2,7 +2,9 @@ use log::{error, info};
 use serde::Deserialize;
 use tauri::{AppHandle, Runtime};
 
+use super::answer::{ask_project, Answer, ConversationTurn};
 use super::indexer::{embedder_from_config, index_meeting_with_app, IndexOutcome};
+use super::llm::ConfiguredChatModel;
 use super::retriever::{hybrid_search, SearchResponse};
 use super::store::{ProjectIndexStatus, RagConfig, RagStore, SearchFilters};
 use crate::state::AppState;
@@ -110,4 +112,45 @@ pub async fn rag_search(
     hybrid_search(pool, embedder.as_ref(), &request.project_id, request.query.trim(), &filters, limit)
         .await
         .map_err(|e| err("search", e))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AskRequest {
+    pub project_id: String,
+    pub question: String,
+    #[serde(default)]
+    pub history: Vec<ConversationTurn>,
+}
+
+/// Answers a question about a project's meetings, citing the passages used.
+#[tauri::command]
+pub async fn rag_ask<R: Runtime>(
+    app: AppHandle<R>,
+    state: tauri::State<'_, AppState>,
+    request: AskRequest,
+) -> Result<Answer, String> {
+    use tauri::Manager;
+
+    let pool = state.db_manager.pool();
+    if request.question.trim().is_empty() {
+        return Err("Question cannot be empty".to_string());
+    }
+    let config = RagStore::get_config(pool).await.map_err(|e| err("load RAG config", e))?;
+    let embedder = embedder_from_config(pool, &config).await;
+    let llm = ConfiguredChatModel::from_settings(pool, app.path().app_data_dir().ok())
+        .await
+        .map_err(|e| err("prepare the language model", e))?;
+    info!("RAG: answering question for project {}", request.project_id);
+    ask_project(
+        pool,
+        embedder.as_ref(),
+        &llm,
+        &request.project_id,
+        &request.question,
+        &request.history,
+        chrono::Local::now().date_naive(),
+    )
+    .await
+    .map_err(|e| err("answer the question", e))
 }

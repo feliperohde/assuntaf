@@ -307,7 +307,8 @@ impl RagStore {
         Ok(rows.into_iter().map(|(id,)| id).collect())
     }
 
-    /// Top-k chunks by cosine similarity among chunks embedded with `embedding_model`.
+    /// Top-k chunks by cosine similarity among chunks embedded with `embedding_model`,
+    /// ignoring chunks below `min_similarity` (so unrelated questions find nothing).
     pub async fn vector_search(
         pool: &SqlitePool,
         project_id: &str,
@@ -315,6 +316,7 @@ impl RagStore {
         embedding_model: &str,
         filters: &SearchFilters,
         k: usize,
+        min_similarity: f64,
     ) -> Result<Vec<ChunkHit>, SqlxError> {
         let rows: Vec<(String, Vec<u8>)> = sqlx::query_as(
             "SELECT c.id, c.embedding FROM rag_chunks c
@@ -340,6 +342,7 @@ impl RagStore {
                 let score = cosine_similarity(query_vector, &decode_vector(&blob));
                 (id, score)
             })
+            .filter(|(_, score)| *score >= min_similarity)
             .collect();
         scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         scored.truncate(k);

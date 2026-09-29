@@ -634,6 +634,7 @@ pub fn run() {
             rag::commands::rag_index_meeting,
             rag::commands::rag_reindex_project,
             rag::commands::rag_search,
+            rag::commands::rag_ask,
             analytics::commands::init_analytics,
             analytics::commands::disable_analytics,
             analytics::commands::track_event,
