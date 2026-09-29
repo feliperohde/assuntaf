@@ -123,6 +123,14 @@ export interface ConversationTurn {
   answer: string;
 }
 
+export interface OllamaProbe {
+  endpoint: string;
+  reachable: boolean;
+  models: string[];
+  modelAvailable: boolean;
+  error: string | null;
+}
+
 export const RAG_INDEX_EVENT = 'rag-index-progress';
 
 export const ragService = {
@@ -132,6 +140,8 @@ export const ragService = {
   indexMeeting: (meetingId: string) => invoke<IndexOutcome | null>('rag_index_meeting', { meetingId }),
   reindexProject: (projectId: string) => invoke<number>('rag_reindex_project', { projectId }),
   search: (request: SearchRequest) => invoke<SearchResponse>('rag_search', { request }),
+  testOllama: (endpoint: string | null, model: string) =>
+    invoke<OllamaProbe>('rag_test_ollama', { endpoint, model }),
   listTickets: (projectId: string) => invoke<TicketSummary[]>('rag_list_tickets', { projectId }),
   ticketFacts: (entityId: string) => invoke<Fact[]>('rag_ticket_facts', { entityId }),
   listFacts: (projectId: string, factType: FactType, limit?: number) =>

@@ -148,7 +148,14 @@ impl RagStore {
         .bind(config.enabled)
         .bind(&config.embedding_provider)
         .bind(config.embedding_model.trim())
-        .bind(config.ollama_endpoint.as_deref().map(str::trim).filter(|e| !e.is_empty()))
+        .bind(
+            config
+                .ollama_endpoint
+                .as_deref()
+                .map(str::trim)
+                .filter(|e| !e.is_empty())
+                .map(|e| super::embeddings::normalize_endpoint(Some(e))),
+        )
         .bind(config.extract_facts)
         .bind(config.auto_diarize)
         .execute(pool)

@@ -1,18 +1,32 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { BrainCircuit } from "lucide-react"
+import { BrainCircuit, CheckCircle2, AlertTriangle, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { Switch } from "./ui/switch"
 import { Input } from "./ui/input"
 import { Label } from "./ui/label"
 import { Button } from "./ui/button"
-import { RagConfig, ragService } from "@/services/ragService"
+import { OllamaProbe, RagConfig, ragService } from "@/services/ragService"
 
 /** Settings for the meeting knowledge index (embeddings via local Ollama). */
 export function RagSettings() {
   const [config, setConfig] = useState<RagConfig | null>(null)
   const [saving, setSaving] = useState(false)
+  const [probe, setProbe] = useState<OllamaProbe | null>(null)
+  const [testing, setTesting] = useState(false)
+
+  const testConnection = async () => {
+    if (!config) return
+    setTesting(true)
+    try {
+      setProbe(await ragService.testOllama(config.ollamaEndpoint, config.embeddingModel))
+    } catch (error) {
+      toast.error("Connection test failed", { description: String(error) })
+    } finally {
+      setTesting(false)
+    }
+  }
 
   useEffect(() => {
     ragService
@@ -72,13 +86,56 @@ export function RagSettings() {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="rag-endpoint">Ollama endpoint</Label>
-          <Input
-            id="rag-endpoint"
-            value={config.ollamaEndpoint ?? ""}
-            onChange={e => setConfig({ ...config, ollamaEndpoint: e.target.value || null })}
-            placeholder="Same as summary settings (default http://localhost:11434)"
-          />
+          <Label htmlFor="rag-endpoint">Ollama server</Label>
+          <div className="flex gap-2">
+            <Input
+              id="rag-endpoint"
+              value={config.ollamaEndpoint ?? ""}
+              onChange={e => {
+                setConfig({ ...config, ollamaEndpoint: e.target.value || null })
+                setProbe(null)
+              }}
+              placeholder="e.g. 192.168.3.16 — empty uses the summary Ollama or this computer"
+            />
+            <Button variant="outline" onClick={testConnection} disabled={testing}>
+              {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : "Test connection"}
+            </Button>
+          </div>
+          <p className="text-xs text-gray-500">
+            Accepts an IP or host name; port 11434 and http:// are added automatically. An Ollama on another machine
+            must accept network connections (start it with <code>OLLAMA_HOST=0.0.0.0 ollama serve</code>).
+          </p>
+          {probe && (
+            <div
+              className={`text-xs rounded-md p-2 border ${
+                probe.reachable && probe.modelAvailable
+                  ? "bg-green-50 border-green-200 text-green-800"
+                  : "bg-amber-50 border-amber-200 text-amber-800"
+              }`}
+            >
+              {!probe.reachable ? (
+                <p className="flex items-start gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" /> {probe.error}
+                </p>
+              ) : probe.modelAvailable ? (
+                <p className="flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Connected to {probe.endpoint}; model{" "}
+                  <code>{config.embeddingModel}</code> is available. Save, then reindex your projects.
+                </p>
+              ) : (
+                <div className="space-y-1">
+                  <p className="flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5" /> Connected to {probe.endpoint}, but{" "}
+                    <code>{config.embeddingModel}</code> is not installed there. Run{" "}
+                    <code>ollama pull {config.embeddingModel}</code> on that machine.
+                  </p>
+                  {probe.models.length > 0 && (
+                    <p>Available models: {probe.models.join(", ")}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="flex items-center justify-between">

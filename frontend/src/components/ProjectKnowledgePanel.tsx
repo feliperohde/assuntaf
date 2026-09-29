@@ -114,7 +114,7 @@ export function ProjectKnowledgePanel({ projectId }: { projectId: string }) {
                 {status.staleEmbeddings > 0 && 'Some passages were indexed with a different model. '}
                 {(status.partialMeetings > 0 || status.failedMeetings > 0) && 'Some meetings are only keyword-searchable. '}
                 {status.lastError && <span className="block text-xs">Last error: {status.lastError}</span>}
-                Reindex after fixing the issue (e.g. start Ollama and pull the embedding model).
+                Check the Ollama server in Settings → Knowledge (Test connection), then reindex.
               </span>
             </p>
           )}

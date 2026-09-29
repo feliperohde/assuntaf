@@ -39,15 +39,22 @@ pub struct IndexOutcome {
 /// Creates the configured embedding provider. The endpoint falls back to the
 /// Ollama endpoint configured for summaries, then to localhost.
 pub async fn embedder_from_config(pool: &SqlitePool, config: &RagConfig) -> Box<dyn EmbeddingProvider> {
-    let endpoint = match config.ollama_endpoint.clone() {
-        Some(endpoint) => Some(endpoint),
+    let endpoint = resolve_endpoint(pool, config.ollama_endpoint.as_deref()).await;
+    Box::new(OllamaEmbedder::new(endpoint.as_deref(), &config.embedding_model))
+}
+
+/// The embedding endpoint: the one set for the knowledge index, else the Ollama
+/// endpoint set for summaries, else None (localhost).
+pub async fn resolve_endpoint(pool: &SqlitePool, configured: Option<&str>) -> Option<String> {
+    match configured.map(str::trim).filter(|e| !e.is_empty()) {
+        Some(endpoint) => Some(endpoint.to_string()),
         None => SettingsRepository::get_model_config(pool)
             .await
             .ok()
             .flatten()
-            .and_then(|s| s.ollama_endpoint),
-    };
-    Box::new(OllamaEmbedder::new(endpoint.as_deref(), &config.embedding_model))
+            .and_then(|s| s.ollama_endpoint)
+            .filter(|e| !e.trim().is_empty()),
+    }
 }
 
 struct MeetingSource {
