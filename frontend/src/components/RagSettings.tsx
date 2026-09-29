@@ -95,6 +95,20 @@ export function RagSettings() {
           />
         </div>
 
+        <div className="flex items-center justify-between">
+          <div>
+            <Label>Detect speakers automatically</Label>
+            <p className="text-xs text-gray-500 mt-1">
+              Identifies who spoke when in each recorded meeting (runs locally; downloads ~35 MB of models on first
+              use). Speakers linked to project members are recognized by voice in later meetings.
+            </p>
+          </div>
+          <Switch
+            checked={config.autoDiarize}
+            onCheckedChange={autoDiarize => setConfig({ ...config, autoDiarize })}
+          />
+        </div>
+
         <Button variant="blue" onClick={save} disabled={saving || !config.embeddingModel.trim()}>
           Save
         </Button>

@@ -13,6 +13,7 @@ use super::chunker::{chunk_markdown, chunk_transcript, ChunkOptions, Segment};
 use super::embeddings::{EmbeddingProvider, OllamaEmbedder};
 use super::entities::extract_meeting_facts;
 use super::llm::ConfiguredChatModel;
+use crate::diarization::store::SpeakerStore;
 use super::store::{MeetingRef, NewChunk, RagConfig, RagStore};
 use crate::database::repositories::setting::SettingsRepository;
 use crate::state::AppState;
@@ -69,8 +70,12 @@ async fn load_meeting(pool: &SqlitePool, meeting_id: &str) -> Result<MeetingSour
         row.ok_or_else(|| anyhow!("Meeting {} not found", meeting_id))?;
 
     let segments: Vec<(String, Option<f64>, Option<f64>, Option<String>)> = sqlx::query_as(
-        "SELECT transcript, audio_start_time, audio_end_time, speaker FROM transcripts
-         WHERE meeting_id = ? ORDER BY COALESCE(audio_start_time, 0), timestamp",
+        "SELECT t.transcript, t.audio_start_time, t.audio_end_time,
+                COALESCE(pm.name, s.label, t.speaker)
+         FROM transcripts t
+         LEFT JOIN meeting_speakers s ON s.id = t.speaker_id
+         LEFT JOIN project_members pm ON pm.id = s.member_id
+         WHERE t.meeting_id = ? ORDER BY COALESCE(t.audio_start_time, 0), t.timestamp",
     )
     .bind(meeting_id)
     .fetch_all(pool)
@@ -225,7 +230,30 @@ pub async fn index_meeting(
 }
 
 /// Indexes a meeting using the app's pool and config, emitting `rag-index-progress`.
+/// Optional steps around indexing (each also gated by the RAG config).
+#[derive(Debug, Clone, Copy)]
+pub struct IndexOptions {
+    /// Detect speakers first when the meeting has a recording but no speakers yet.
+    pub diarize: bool,
+    /// Extract tickets/decisions/actions with the summary LLM afterwards.
+    pub extract_facts: bool,
+}
+
+impl Default for IndexOptions {
+    fn default() -> Self {
+        Self { diarize: true, extract_facts: true }
+    }
+}
+
 pub async fn index_meeting_with_app<R: Runtime>(app: &AppHandle<R>, meeting_id: &str) -> Result<Option<IndexOutcome>> {
+    index_meeting_with_options(app, meeting_id, IndexOptions::default()).await
+}
+
+pub async fn index_meeting_with_options<R: Runtime>(
+    app: &AppHandle<R>,
+    meeting_id: &str,
+    options: IndexOptions,
+) -> Result<Option<IndexOutcome>> {
     let state = app
         .try_state::<AppState>()
         .ok_or_else(|| anyhow!("App state not available"))?;
@@ -235,6 +263,24 @@ pub async fn index_meeting_with_app<R: Runtime>(app: &AppHandle<R>, meeting_id: 
     if !config.enabled {
         return Ok(None);
     }
+
+    // Speakers first, so passages carry who said what. Runs once per meeting; if the
+    // recording isn't ready yet (still being written) a later reindex retries.
+    if options.diarize
+        && config.auto_diarize
+        && !SpeakerStore::has_speakers(&pool, meeting_id).await.unwrap_or(true)
+        && crate::diarization::service::has_audio(&pool, meeting_id).await
+    {
+        if let Ok(app_data_dir) = app.path().app_data_dir() {
+            match crate::diarization::service::diarize_meeting(&pool, &app_data_dir, meeting_id).await {
+                Ok(outcome) => {
+                    let _ = app.emit("diarization-complete", &outcome);
+                }
+                Err(e) => log::warn!("Diarization skipped for meeting {}: {}", meeting_id, e),
+            }
+        }
+    }
+
     let embedder = embedder_from_config(&pool, &config).await;
 
     let outcome = match index_meeting(&pool, embedder.as_ref(), meeting_id).await {
@@ -254,7 +300,7 @@ pub async fn index_meeting_with_app<R: Runtime>(app: &AppHandle<R>, meeting_id: 
     };
 
     let mut outcome = outcome;
-    if config.extract_facts && outcome.status != "error" && outcome.chunk_count > 0 {
+    if options.extract_facts && config.extract_facts && outcome.status != "error" && outcome.chunk_count > 0 {
         let result = match ConfiguredChatModel::from_settings(&pool, app.path().app_data_dir().ok()).await {
             Ok(llm) => extract_meeting_facts(&pool, &llm, meeting_id).await,
             Err(e) => Err(e),
@@ -273,8 +319,12 @@ pub async fn index_meeting_with_app<R: Runtime>(app: &AppHandle<R>, meeting_id: 
 
 /// Fire-and-forget indexing after a meeting is created or changed.
 pub fn schedule_meeting_index<R: Runtime>(app: AppHandle<R>, meeting_id: String) {
+    schedule_meeting_index_with(app, meeting_id, IndexOptions::default());
+}
+
+pub fn schedule_meeting_index_with<R: Runtime>(app: AppHandle<R>, meeting_id: String, options: IndexOptions) {
     tauri::async_runtime::spawn(async move {
-        if let Err(e) = index_meeting_with_app(&app, &meeting_id).await {
+        if let Err(e) = index_meeting_with_options(&app, &meeting_id, options).await {
             log::error!("RAG: failed to index meeting {}: {}", meeting_id, e);
         }
     });

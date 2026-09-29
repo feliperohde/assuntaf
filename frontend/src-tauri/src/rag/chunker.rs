@@ -86,12 +86,24 @@ fn window_seconds(window: &[&Segment]) -> f64 {
     }
 }
 
+/// Joins segment texts; when speakers are known, each change of speaker is marked
+/// inline ("Ana: …") so both keyword search and the answer model see who said what.
 fn build_chunk(window: &[&Segment]) -> ChunkDraft {
-    let text = window
-        .iter()
-        .map(|s| s.text.trim())
-        .collect::<Vec<_>>()
-        .join(" ");
+    let mut text = String::new();
+    let mut current: Option<&str> = None;
+    for segment in window {
+        if !text.is_empty() {
+            text.push(' ');
+        }
+        if let Some(speaker) = segment.speaker.as_deref() {
+            if current != Some(speaker) {
+                text.push_str(speaker);
+                text.push_str(": ");
+                current = Some(speaker);
+            }
+        }
+        text.push_str(segment.text.trim());
+    }
     let mut speakers: Vec<String> = Vec::new();
     for speaker in window.iter().filter_map(|s| s.speaker.as_ref()) {
         if !speakers.contains(speaker) {
@@ -245,8 +257,11 @@ mod tests {
         b.speaker = Some("Bruno".into());
         let mut c = seg("c", 2.0, 3.0);
         c.speaker = Some("Ana".into());
-        let chunks = chunk_transcript(&[a, b, c], ChunkOptions::default());
+        let mut d = seg("d", 3.0, 4.0);
+        d.speaker = Some("Ana".into());
+        let chunks = chunk_transcript(&[a, b, c, d], ChunkOptions::default());
         assert_eq!(chunks[0].speakers, vec!["Ana".to_string(), "Bruno".to_string()]);
+        assert_eq!(chunks[0].text, "Ana: a Bruno: b Ana: c d");
     }
 
     #[test]
