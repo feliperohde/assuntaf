@@ -4,6 +4,7 @@ import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import Analytics from '@/lib/analytics';
 import { applyPinnedSummaryLanguageToMeeting } from '@/lib/summary-language-preferences';
 import { toast } from 'sonner';
+import { getActiveProjectId } from '@/services/projectService';
 
 export interface AudioFileInfo {
   path: string;
@@ -232,6 +233,7 @@ export function useImportAudio({
           language: language || null,
           model: model || null,
           provider: provider || null,
+          projectId: getActiveProjectId(),
         });
       } catch (err: any) {
         setStatus('error');

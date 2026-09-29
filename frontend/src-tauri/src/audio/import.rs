@@ -4,6 +4,7 @@ use crate::api::TranscriptSegment;
 use crate::audio::decoder::{decode_audio_file, decode_audio_file_with_progress};
 use crate::audio::vad::get_speech_chunks_with_progress;
 use crate::config::{DEFAULT_WHISPER_MODEL, DEFAULT_PARAKEET_MODEL};
+use crate::database::repositories::project::ProjectsRepository;
 use crate::parakeet_engine::ParakeetEngine;
 use crate::state::AppState;
 use crate::whisper_engine::WhisperEngine;
@@ -259,6 +260,7 @@ pub async fn start_import<R: Runtime>(
     language: Option<String>,
     model: Option<String>,
     provider: Option<String>,
+    project_id: Option<String>,
 ) -> Result<ImportResult> {
     // Acquire guard - ensures flag is cleared even on panic/early return
     let _guard = ImportGuard::acquire().map_err(|e| anyhow!(e))?;
@@ -274,6 +276,7 @@ pub async fn start_import<R: Runtime>(
         language,
         model,
         provider,
+        project_id,
     )
     .await;
 
@@ -316,6 +319,7 @@ async fn run_import<R: Runtime>(
     language: Option<String>,
     model: Option<String>,
     provider: Option<String>,
+    project_id: Option<String>,
 ) -> Result<ImportResult> {
     let source = PathBuf::from(&source_path);
 
@@ -638,11 +642,19 @@ async fn run_import<R: Runtime>(
         .try_state::<AppState>()
         .ok_or_else(|| anyhow!("App state not available"))?;
 
+    let project_id = ProjectsRepository::resolve_project_id(
+        app_state.db_manager.pool(),
+        project_id.as_deref(),
+    )
+    .await
+    .map_err(|e| anyhow!("Failed to resolve project: {}", e))?;
+
     let meeting_id = create_meeting_with_transcripts(
         app_state.db_manager.pool(),
         &title,
         &segments,
         meeting_folder.to_string_lossy().to_string(),
+        &project_id,
     )
     .await?;
 
@@ -693,6 +705,7 @@ async fn create_meeting_with_transcripts(
     title: &str,
     segments: &[TranscriptSegment],
     folder_path: String,
+    project_id: &str,
 ) -> Result<String> {
     let meeting_id = format!("meeting-{}", Uuid::new_v4());
     let now = chrono::Utc::now();
@@ -705,14 +718,15 @@ async fn create_meeting_with_transcripts(
 
     // Insert meeting
     sqlx::query(
-        "INSERT INTO meetings (id, title, created_at, updated_at, folder_path)
-         VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO meetings (id, title, created_at, updated_at, folder_path, project_id)
+         VALUES (?, ?, ?, ?, ?, ?)",
     )
     .bind(&meeting_id)
     .bind(title)
     .bind(now)
     .bind(now)
     .bind(&folder_path)
+    .bind(project_id)
     .execute(&mut *tx)
     .await
     .map_err(|e| anyhow!("Failed to create meeting: {}", e))?;
@@ -969,6 +983,7 @@ pub async fn start_import_audio_command<R: Runtime>(
     language: Option<String>,
     model: Option<String>,
     provider: Option<String>,
+    project_id: Option<String>,
 ) -> Result<ImportStarted, String> {
     // Check if import is already in progress (guard will be acquired in start_import)
     if IMPORT_IN_PROGRESS.load(Ordering::SeqCst) {
@@ -977,7 +992,7 @@ pub async fn start_import_audio_command<R: Runtime>(
 
     // Spawn import in background
     tauri::async_runtime::spawn(async move {
-        let result = start_import(app, source_path, title, language, model, provider).await;
+        let result = start_import(app, source_path, title, language, model, provider, project_id).await;
 
         if let Err(e) = result {
             error!("Import failed: {}", e);

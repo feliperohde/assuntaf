@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import Analytics from '@/lib/analytics';
 import { invoke } from '@tauri-apps/api/core';
 import { useRecordingState } from '@/contexts/RecordingStateContext';
+import { useProject } from '@/contexts/ProjectContext';
 import type { SummaryProcessResponse } from '@/types';
 
 
@@ -89,6 +90,7 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
 
   // Use recording state from RecordingStateContext (single source of truth)
   const { isRecording } = useRecordingState();
+  const { activeProjectId } = useProject();
 
   const pathname = usePathname();
   const router = useRouter();
@@ -97,7 +99,7 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
   const fetchMeetings = React.useCallback(async () => {
     if (serverAddress) {
       try {
-        const meetings = await invoke('api_get_meetings') as Array<{ id: string, title: string }>;
+        const meetings = await invoke('api_get_meetings', { projectId: activeProjectId }) as Array<{ id: string, title: string }>;
         const transformedMeetings = meetings.map((meeting: any) => ({
           id: meeting.id,
           title: meeting.title
@@ -110,7 +112,7 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
         Analytics.trackBackendConnection(false, error instanceof Error ? error.message : 'Unknown error');
       }
     }
-  }, [serverAddress]);
+  }, [serverAddress, activeProjectId]);
 
   useEffect(() => {
     fetchMeetings();
@@ -185,7 +187,7 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
       setIsSearching(true);
 
 
-      const results = await invoke('api_search_transcripts', { query }) as TranscriptSearchResult[];
+      const results = await invoke('api_search_transcripts', { query, projectId: activeProjectId }) as TranscriptSearchResult[];
       setSearchResults(results);
     } catch (error) {
       console.error('Error searching transcripts:', error);
