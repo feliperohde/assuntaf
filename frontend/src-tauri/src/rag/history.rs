@@ -23,6 +23,7 @@ pub struct AskHistoryEntry {
     pub found: bool,
     pub citation_count: i64,
     pub created_at: String,
+    pub all_projects: bool,
     /// Start of the answer, for list previews.
     pub answer_preview: String,
 }
@@ -34,6 +35,7 @@ pub struct AskHistoryItem {
     pub project_id: String,
     pub question: String,
     pub created_at: String,
+    pub all_projects: bool,
     /// The answer exactly as it was returned (same shape as `Answer`).
     pub answer: serde_json::Value,
 }
@@ -49,12 +51,18 @@ fn preview(text: &str) -> String {
     }
 }
 
-pub async fn save(pool: &SqlitePool, project_id: &str, question: &str, answer: &Answer) -> Result<String, sqlx::Error> {
+pub async fn save(
+    pool: &SqlitePool,
+    project_id: &str,
+    question: &str,
+    answer: &Answer,
+    all_projects: bool,
+) -> Result<String, sqlx::Error> {
     let id = format!("ask-{}", Uuid::new_v4());
     let json = serde_json::to_string(answer).map_err(|e| sqlx::Error::Protocol(e.to_string()))?;
     sqlx::query(
-        "INSERT INTO ask_history (id, project_id, question, answer_json, found, citation_count, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO ask_history (id, project_id, question, answer_json, found, citation_count, created_at, all_projects)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&id)
     .bind(project_id)
@@ -63,6 +71,7 @@ pub async fn save(pool: &SqlitePool, project_id: &str, question: &str, answer: &
     .bind(answer.found)
     .bind(answer.citations.len() as i64)
     .bind(Utc::now().to_rfc3339())
+    .bind(all_projects)
     .execute(pool)
     .await?;
     Ok(id)
@@ -73,8 +82,8 @@ pub async fn page(pool: &SqlitePool, project_id: &str, limit: i64, offset: i64) 
         .bind(project_id)
         .fetch_one(pool)
         .await?;
-    let rows: Vec<(String, String, bool, i64, String, String)> = sqlx::query_as(
-        "SELECT id, question, found, citation_count, created_at, answer_json FROM ask_history
+    let rows: Vec<(String, String, bool, i64, String, String, bool)> = sqlx::query_as(
+        "SELECT id, question, found, citation_count, created_at, answer_json, all_projects FROM ask_history
          WHERE project_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
     )
     .bind(project_id)
@@ -84,29 +93,30 @@ pub async fn page(pool: &SqlitePool, project_id: &str, limit: i64, offset: i64) 
     .await?;
     let items = rows
         .into_iter()
-        .map(|(id, question, found, citation_count, created_at, json)| {
+        .map(|(id, question, found, citation_count, created_at, json, all_projects)| {
             let answer = serde_json::from_str::<serde_json::Value>(&json)
                 .ok()
                 .and_then(|v| v.get("answer").and_then(|a| a.as_str()).map(preview))
                 .unwrap_or_default();
-            AskHistoryEntry { id, question, found, citation_count, created_at, answer_preview: answer }
+            AskHistoryEntry { id, question, found, citation_count, created_at, all_projects, answer_preview: answer }
         })
         .collect();
     Ok(Page { items, total })
 }
 
 pub async fn get(pool: &SqlitePool, id: &str) -> Result<Option<AskHistoryItem>, sqlx::Error> {
-    let row: Option<(String, String, String, String, String)> = sqlx::query_as(
-        "SELECT id, project_id, question, created_at, answer_json FROM ask_history WHERE id = ?",
+    let row: Option<(String, String, String, String, String, bool)> = sqlx::query_as(
+        "SELECT id, project_id, question, created_at, answer_json, all_projects FROM ask_history WHERE id = ?",
     )
     .bind(id)
     .fetch_optional(pool)
     .await?;
-    Ok(row.map(|(id, project_id, question, created_at, json)| AskHistoryItem {
+    Ok(row.map(|(id, project_id, question, created_at, json, all_projects)| AskHistoryItem {
         id,
         project_id,
         question,
         created_at,
+        all_projects,
         answer: serde_json::from_str(&json).unwrap_or(serde_json::Value::Null),
     }))
 }
@@ -143,7 +153,7 @@ mod tests {
 
         let mut ids = Vec::new();
         for i in 0..12 {
-            ids.push(save(&pool, "p1", &format!("Pergunta {i}"), &answer(&"resposta ".repeat(50))).await.unwrap());
+            ids.push(save(&pool, "p1", &format!("Pergunta {i}"), &answer(&"resposta ".repeat(50)), i % 2 == 0).await.unwrap());
             tokio::time::sleep(std::time::Duration::from_millis(2)).await;
         }
         let first = page(&pool, "p1", 10, 0).await.unwrap();
@@ -157,6 +167,8 @@ mod tests {
         let item = get(&pool, &ids[3]).await.unwrap().unwrap();
         assert_eq!(item.question, "Pergunta 3");
         assert_eq!(item.answer["found"], true);
+        assert!(!item.all_projects); // i = 3 was saved scoped
+        assert!(get(&pool, &ids[4]).await.unwrap().unwrap().all_projects);
 
         assert!(delete(&pool, &ids[3]).await.unwrap());
         assert!(get(&pool, &ids[3]).await.unwrap().is_none());

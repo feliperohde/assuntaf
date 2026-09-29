@@ -66,7 +66,7 @@ pub fn reciprocal_rank_fusion(
 pub async fn hybrid_search(
     pool: &SqlitePool,
     embedder: &dyn EmbeddingProvider,
-    project_id: &str,
+    project_id: Option<&str>,
     query: &str,
     filters: &SearchFilters,
     limit: usize,

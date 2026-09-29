@@ -8,6 +8,7 @@
 //! 3. Evidence gate — no passages means "not found", without asking the LLM to guess.
 //! 4. Answer — the LLM answers only from numbered excerpts and cites them as [n].
 
+use std::collections::HashMap;
 use anyhow::Result;
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
@@ -46,6 +47,8 @@ pub struct Citation {
     pub start_time: Option<f64>,
     pub end_time: Option<f64>,
     pub excerpt: String,
+    /// Set when searching all projects.
+    pub project_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, PartialEq)]
@@ -84,11 +87,32 @@ struct MeetingInfo {
     date: String,
 }
 
-async fn recent_meetings(pool: &SqlitePool, project_id: &str) -> Result<Vec<MeetingInfo>> {
+/// Project name of each evidence's meeting.
+async fn meeting_project_names(pool: &SqlitePool, evidence: &[Evidence]) -> Result<HashMap<String, String>> {
+    let mut names = HashMap::new();
+    for e in evidence {
+        if names.contains_key(&e.meeting_id) {
+            continue;
+        }
+        let row: Option<(String,)> = sqlx::query_as(
+            "SELECT p.name FROM meetings m JOIN projects p ON p.id = m.project_id WHERE m.id = ?",
+        )
+        .bind(&e.meeting_id)
+        .fetch_optional(pool)
+        .await?;
+        if let Some((name,)) = row {
+            names.insert(e.meeting_id.clone(), name);
+        }
+    }
+    Ok(names)
+}
+
+async fn recent_meetings(pool: &SqlitePool, project_id: Option<&str>) -> Result<Vec<MeetingInfo>> {
     let rows: Vec<(String, String, String)> = sqlx::query_as(
-        "SELECT id, title, CAST(created_at AS TEXT) FROM meetings WHERE project_id = ?
+        "SELECT id, title, CAST(created_at AS TEXT) FROM meetings WHERE (? IS NULL OR project_id = ?)
          ORDER BY created_at DESC LIMIT ?",
     )
+    .bind(project_id)
     .bind(project_id)
     .bind(MEETINGS_IN_PLANNER)
     .fetch_all(pool)
@@ -368,7 +392,7 @@ pub async fn ask_project(
     pool: &SqlitePool,
     embedder: &dyn EmbeddingProvider,
     llm: &dyn ChatModel,
-    project_id: &str,
+    project_id: Option<&str>,
     question: &str,
     history: &[ConversationTurn],
     today: NaiveDate,
@@ -378,10 +402,15 @@ pub async fn ask_project(
     // 1. Plan
     let meetings = recent_meetings(pool, project_id).await?;
     let meeting_ids: Vec<String> = meetings.iter().map(|m| m.id.clone()).collect();
-    let patterns: Option<(Option<String>,)> = sqlx::query_as("SELECT ticket_patterns FROM projects WHERE id = ?")
-        .bind(project_id)
-        .fetch_optional(pool)
-        .await?;
+    // Across all projects, any project's ticket pattern counts
+    let patterns: Option<(Option<String>,)> = sqlx::query_as(
+        "SELECT group_concat(ticket_patterns, char(10)) FROM projects
+         WHERE (? IS NULL OR id = ?) AND ticket_patterns IS NOT NULL AND ticket_patterns != ''",
+    )
+    .bind(project_id)
+    .bind(project_id)
+    .fetch_optional(pool)
+    .await?;
     let matcher = TicketMatcher::new(patterns.and_then(|(p,)| p).as_deref());
     let mut plan = match llm
         .complete(PLANNER_SYSTEM, &planner_prompt(question, today, &meetings, history))
@@ -457,7 +486,24 @@ pub async fn ask_project(
     }
 
     // 4. Answer
-    let project_context = ProjectsRepository::project_context(pool, project_id).await?;
+    // Across projects, name each passage's project so the answer can tell them apart
+    let project_names = match project_id {
+        Some(_) => HashMap::new(),
+        None => meeting_project_names(pool, &evidence).await?,
+    };
+    let evidence: Vec<Evidence> = evidence
+        .into_iter()
+        .map(|mut e| {
+            if let Some(name) = project_names.get(&e.meeting_id) {
+                e.meeting_title = format!("[{name}] {}", e.meeting_title);
+            }
+            e
+        })
+        .collect();
+    let project_context = match project_id {
+        Some(id) => ProjectsRepository::project_context(pool, id).await?,
+        None => None,
+    };
     let answer = llm
         .complete(
             ANSWER_SYSTEM,
@@ -476,12 +522,16 @@ pub async fn ask_project(
             index: i + 1,
             chunk_id: e.id.clone(),
             meeting_id: e.meeting_id.clone(),
-            meeting_title: e.meeting_title.clone(),
+            meeting_title: match project_names.get(&e.meeting_id) {
+                Some(name) => e.meeting_title.trim_start_matches(&format!("[{name}] ")).to_string(),
+                None => e.meeting_title.clone(),
+            },
             meeting_date: e.meeting_date.clone(),
             kind: e.kind.clone(),
             start_time: e.start_time,
             end_time: e.end_time,
             excerpt: excerpt(&e.text),
+            project_name: project_names.get(&e.meeting_id).cloned(),
         })
         .collect();
 
@@ -648,7 +698,7 @@ mod tests {
             Ok(r#"{"search_query": "ABC-123 bloqueado", "date_from": null, "date_to": null, "meeting_id": null}"#),
             Ok("O ABC-123 está bloqueado por falta de acesso ao ambiente, discutido na Daily de 22/09 [1]."),
         ]);
-        let answer = ask_project(&pool, &KeywordEmbedder, &llm, "p1", "Por que o ABC-123 está bloqueado?", &[], today())
+        let answer = ask_project(&pool, &KeywordEmbedder, &llm, Some("p1"), "Por que o ABC-123 está bloqueado?", &[], today())
             .await
             .unwrap();
 
@@ -668,6 +718,44 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn all_projects_search_names_each_passage_project() {
+        let pool = setup().await;
+        let now = Utc::now();
+        sqlx::query("INSERT INTO projects (id, name, created_at, updated_at) VALUES ('p2', 'Logística', ?, ?)")
+            .bind(now).bind(now).execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO meetings (id, title, created_at, updated_at, project_id) VALUES ('m3', 'Sync', '2026-09-27 10:00:00+00:00', '2026-09-27 10:00:00+00:00', 'p2')")
+            .execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO transcripts (id, meeting_id, transcript, timestamp, audio_start_time, audio_end_time) VALUES ('m3-t', 'm3', 'O deploy da logística atrasou', '00:00', 10.0, 12.0)")
+            .execute(&pool).await.unwrap();
+        index_meeting(&pool, &KeywordEmbedder, "m3").await.unwrap();
+
+        let llm = ScriptedLlm::new(vec![
+            Ok(r#"{"search_query": "deploy"}"#),
+            Ok("Pagamentos fez o deploy [1]; na Logística atrasou [2]."),
+        ]);
+        let answer = ask_project(&pool, &KeywordEmbedder, &llm, None, "Como foram os deploys?", &[], today())
+            .await
+            .unwrap();
+        assert!(answer.found);
+        let mut projects: Vec<(String, Option<String>)> =
+            answer.citations.iter().map(|c| (c.meeting_id.clone(), c.project_name.clone())).collect();
+        projects.sort();
+        assert_eq!(
+            projects,
+            vec![("m2".into(), Some("Pagamentos".into())), ("m3".into(), Some("Logística".into()))]
+        );
+        assert!(answer.citations.iter().all(|c| !c.meeting_title.starts_with('[')));
+        let prompts = llm.prompts.lock().unwrap();
+        assert!(prompts[1].contains("[Logística] Sync"));
+        assert!(!prompts[1].contains("Time de pagamentos")); // no single-project context
+
+        // Scoped to one project, the other one's meeting is not found
+        let llm = ScriptedLlm::new(vec![Ok(r#"{"search_query": "logística"}"#), Ok("nada")]);
+        let scoped = ask_project(&pool, &KeywordEmbedder, &llm, Some("p1"), "E a logística?", &[], today()).await.unwrap();
+        assert!(scoped.citations.iter().all(|c| c.meeting_id != "m3" && c.project_name.is_none()));
+    }
+
+    #[tokio::test]
     async fn date_filter_is_applied_and_relaxed_when_empty() {
         let pool = setup().await;
         // Filter to the Retro's date: only m2 is eligible
@@ -675,7 +763,7 @@ mod tests {
             Ok(r#"{"search_query": "deploy", "date_from": "2026-09-28", "date_to": "2026-09-29"}"#),
             Ok("Correu bem [1]."),
         ]);
-        let answer = ask_project(&pool, &KeywordEmbedder, &llm, "p1", "Como foi o deploy ontem?", &[], today())
+        let answer = ask_project(&pool, &KeywordEmbedder, &llm, Some("p1"), "Como foi o deploy ontem?", &[], today())
             .await
             .unwrap();
         assert!(!answer.filters_relaxed);
@@ -686,7 +774,7 @@ mod tests {
             Ok(r#"{"search_query": "ABC-123", "date_from": "2025-01-01", "date_to": "2025-01-02"}"#),
             Ok("Bloqueado [1]."),
         ]);
-        let answer = ask_project(&pool, &KeywordEmbedder, &llm, "p1", "ABC-123?", &[], today()).await.unwrap();
+        let answer = ask_project(&pool, &KeywordEmbedder, &llm, Some("p1"), "ABC-123?", &[], today()).await.unwrap();
         assert!(answer.filters_relaxed);
         assert!(answer.found);
     }
@@ -695,7 +783,7 @@ mod tests {
     async fn no_evidence_skips_the_answer_call() {
         let pool = setup().await;
         let llm = ScriptedLlm::new(vec![Ok(r#"{"search_query": "kubernetes"}"#)]);
-        let answer = ask_project(&pool, &KeywordEmbedder, &llm, "p1", "E o kubernetes?", &[], today()).await.unwrap();
+        let answer = ask_project(&pool, &KeywordEmbedder, &llm, Some("p1"), "E o kubernetes?", &[], today()).await.unwrap();
         assert!(!answer.found);
         assert!(answer.citations.is_empty());
         assert_eq!(llm.calls(), 1); // planner only
@@ -706,7 +794,7 @@ mod tests {
         let pool = setup().await;
         let llm = ScriptedLlm::new(vec![Err("timeout"), Ok("Foi bem [1].")]);
         let history = vec![ConversationTurn { question: "Teve deploy?".into(), answer: "Sim, sexta [2].".into() }];
-        let answer = ask_project(&pool, &KeywordEmbedder, &llm, "p1", "Como foi o deploy?", &history, today())
+        let answer = ask_project(&pool, &KeywordEmbedder, &llm, Some("p1"), "Como foi o deploy?", &history, today())
             .await
             .unwrap();
         assert_eq!(answer.plan.search_query, "Como foi o deploy?");
@@ -742,7 +830,7 @@ mod tests {
             Ok(r#"{"search_query": "bloqueio", "tickets": [], "fact_types": ["decision"]}"#),
             Ok("Falta acesso ao ambiente [1]. Também decidiram a release [2]."),
         ]);
-        let answer = ask_project(&pool, &KeywordEmbedder, &llm, "p1", "Por que o ABC-123 está bloqueado?", &[], today())
+        let answer = ask_project(&pool, &KeywordEmbedder, &llm, Some("p1"), "Por que o ABC-123 está bloqueado?", &[], today())
             .await
             .unwrap();
         assert_eq!(answer.plan.tickets, vec!["ABC-123".to_string()]);

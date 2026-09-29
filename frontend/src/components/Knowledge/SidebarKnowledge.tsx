@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { listen } from '@tauri-apps/api/event';
-import { ChevronDown, ChevronRight, CheckCircle2, CircleHelp, History, ListTodo, Ticket, Gavel } from 'lucide-react';
+import { ChevronDown, ChevronRight, CheckCircle2, CircleHelp, Globe, History, ListTodo, Ticket, Gavel } from 'lucide-react';
 import { useProject } from '@/contexts/ProjectContext';
 import { useSidebar } from '@/components/Sidebar/SidebarProvider';
 import { FactBadge } from '@/components/ProjectFactsPanel';
@@ -145,6 +145,9 @@ export function SidebarKnowledge() {
                 <CircleHelp className="w-3 h-3 flex-shrink-0 text-gray-400" aria-label={t('knowledge.notFound')} />
               )}
               <span className="truncate text-gray-800">{entry.question}</span>
+              {entry.allProjects && (
+                <Globe className="w-3 h-3 flex-shrink-0 text-indigo-500" aria-label={t('knowledge.allProjectsBadge')} />
+              )}
             </span>
             <span className="block text-xs text-gray-400">{entry.createdAt.slice(0, 10)}</span>
           </button>
