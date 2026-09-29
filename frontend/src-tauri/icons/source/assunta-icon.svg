@@ -1,23 +1,30 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
-  <!-- Assunta app icon: an "A" whose crossbar is an audio waveform, on an indigo→violet squircle -->
+  <!-- Assunta app icon: vertical sound-wave bars that together draw the letter "A" -->
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#4F46E5"/>
       <stop offset="1" stop-color="#8B5CF6"/>
     </linearGradient>
-    <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.18"/>
-      <stop offset="0.55" stop-color="#FFFFFF" stop-opacity="0"/>
-    </linearGradient>
   </defs>
   <rect x="100" y="100" width="824" height="824" rx="190" fill="url(#bg)"/>
-  <rect x="100" y="100" width="824" height="824" rx="190" fill="url(#shine)"/>
-  <!-- A -->
-  <path d="M322 774 L512 262 L702 774" fill="none" stroke="#FFFFFF" stroke-width="92" stroke-linecap="round" stroke-linejoin="round"/>
-  <!-- waveform crossbar -->
   <g fill="#FFFFFF">
-    <rect x="442" y="640" width="32" height="60" rx="16"/>
-    <rect x="496" y="600" width="32" height="140" rx="16"/>
-    <rect x="550" y="640" width="32" height="60" rx="16"/>
+    <rect x="252.0" y="660.7" width="25.5" height="116.2" rx="12.8"/>
+    <rect x="293.2" y="575.0" width="25.5" height="201.9" rx="12.8"/>
+    <rect x="334.4" y="491.0" width="25.5" height="213.4" rx="12.8"/>
+    <rect x="375.6" y="405.3" width="25.5" height="243.1" rx="12.8"/>
+    <rect x="416.8" y="319.6" width="25.5" height="213.4" rx="12.8"/>
+    <rect x="416.8" y="573.4" width="25.5" height="75.0" rx="12.8"/>
+    <rect x="458.0" y="238.8" width="25.5" height="210.1" rx="12.8"/>
+    <rect x="458.0" y="573.4" width="25.5" height="75.0" rx="12.8"/>
+    <rect x="499.2" y="238.8" width="25.5" height="124.4" rx="12.8"/>
+    <rect x="499.2" y="573.4" width="25.5" height="75.0" rx="12.8"/>
+    <rect x="540.4" y="238.8" width="25.5" height="210.1" rx="12.8"/>
+    <rect x="540.4" y="573.4" width="25.5" height="75.0" rx="12.8"/>
+    <rect x="581.6" y="319.6" width="25.5" height="213.4" rx="12.8"/>
+    <rect x="581.6" y="573.4" width="25.5" height="75.0" rx="12.8"/>
+    <rect x="622.8" y="405.3" width="25.5" height="243.1" rx="12.8"/>
+    <rect x="664.0" y="491.0" width="25.5" height="213.4" rx="12.8"/>
+    <rect x="705.2" y="575.0" width="25.5" height="201.9" rx="12.8"/>
+    <rect x="746.4" y="660.7" width="25.5" height="116.2" rx="12.8"/>
   </g>
 </svg>

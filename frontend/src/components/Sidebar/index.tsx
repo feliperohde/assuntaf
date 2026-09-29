@@ -789,7 +789,7 @@ const Sidebar: React.FC = () => {
         style={{ width: isCollapsed ? SIDEBAR_COLLAPSED_WIDTH : sidebarWidth }}
       >
         {/*  Header with traffic light spacing */}
-        <div className="flex-shrink-0 h-22 flex items-center">
+        <div className="flex-shrink-0 flex items-start">
 
           {/* Title container */}
 
