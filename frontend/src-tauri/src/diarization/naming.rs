@@ -233,6 +233,7 @@ mod tests {
             speaking_seconds: seconds,
             name_source: source.map(Into::into),
             name_evidence: None,
+            is_me: false,
         }
     }
 

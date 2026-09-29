@@ -22,6 +22,8 @@ pub struct MeetingSpeaker {
     /// 'voice', 'inferred' or 'manual'; None while the speaker is unnamed.
     pub name_source: Option<String>,
     pub name_evidence: Option<String>,
+    /// The app's user (recognized by microphone or voice, or set by them).
+    pub is_me: bool,
 }
 
 impl MeetingSpeaker {
@@ -148,7 +150,7 @@ impl SpeakerStore {
     pub async fn list(pool: &SqlitePool, meeting_id: &str) -> Result<Vec<MeetingSpeaker>, sqlx::Error> {
         sqlx::query_as(
             "SELECT s.id, s.label, s.member_id, pm.name AS member_name, s.speaking_seconds,
-                    s.name_source, s.name_evidence
+                    s.name_source, s.name_evidence, s.is_me
              FROM meeting_speakers s LEFT JOIN project_members pm ON pm.id = s.member_id
              WHERE s.meeting_id = ? ORDER BY s.rowid",
         )

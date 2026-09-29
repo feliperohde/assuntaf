@@ -109,6 +109,11 @@ pub async fn diarize_meeting(
         .collect();
     SpeakerStore::save(pool, meeting_id, &speakers, &segment_speakers).await?;
 
+    // The user: the speaker whose lines come from the microphone (or whose voice matches)
+    if let Err(e) = crate::me::identity::recognize_me(pool, meeting_id).await {
+        log::warn!("Diarization: could not recognize the user in {}: {}", meeting_id, e);
+    }
+
     // Names are a bonus: a missing or failing LLM must not lose the speakers
     let naming = name_speakers(pool, app_data_dir, meeting_id).await;
     if let Err(e) = &naming {

@@ -79,7 +79,9 @@ async fn load_meeting(pool: &SqlitePool, meeting_id: &str) -> Result<MeetingSour
 
     let segments: Vec<(String, Option<f64>, Option<f64>, Option<String>)> = sqlx::query_as(
         "SELECT t.transcript, t.audio_start_time, t.audio_end_time,
-                COALESCE(pm.name, s.label, t.speaker)
+                COALESCE(pm.name, s.label,
+                         CASE WHEN t.voice_source = 'mic' THEN (SELECT display_name FROM user_profile WHERE id = 1) END,
+                         t.speaker)
          FROM transcripts t
          LEFT JOIN meeting_speakers s ON s.id = t.speaker_id
          LEFT JOIN project_members pm ON pm.id = s.member_id

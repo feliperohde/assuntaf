@@ -3,7 +3,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { Users, ChevronDown, ChevronRight, Loader2, ScanFace, Sparkles, Check, AudioLines } from 'lucide-react';
+import { Users, ChevronDown, ChevronRight, Loader2, ScanFace, Sparkles, Check, AudioLines, UserRound } from 'lucide-react';
+import { meService } from '@/services/meService';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -120,6 +121,15 @@ export function SpeakersPanel({ meetingId, onSpeakersChanged }: { meetingId: str
     }
   };
 
+  const toggleMe = async (speaker: MeetingSpeaker) => {
+    try {
+      setSpeakers(await meService.setSpeakerIsMe(speaker.id, !speaker.isMe));
+      onSpeakersChanged?.();
+    } catch (error) {
+      toast.error(t('speakers.updateFailed'), { description: String(error) });
+    }
+  };
+
   const update = async (speaker: MeetingSpeaker, label: string | null, memberId: string | null) => {
     try {
       setSpeakers(await diarizationService.updateSpeaker(speaker.id, label, memberId));
@@ -213,11 +223,26 @@ export function SpeakersPanel({ meetingId, onSpeakersChanged }: { meetingId: str
                   </button>
                 </div>
               )}
-              {speaker.nameSource === 'voice' && (
-                <div className="flex items-center gap-1 pl-1 text-xs text-gray-500">
-                  <AudioLines className="w-3 h-3" /> {t('speakers.byVoice')}
-                </div>
-              )}
+              <div className="flex items-center gap-2 pl-1 text-xs">
+                {speaker.isMe ? (
+                  <span className="flex items-center gap-1 text-indigo-700">
+                    <UserRound className="w-3 h-3" /> {t('speakers.isMe')}
+                  </span>
+                ) : (
+                  speaker.nameSource === 'voice' && (
+                    <span className="flex items-center gap-1 text-gray-500">
+                      <AudioLines className="w-3 h-3" /> {t('speakers.byVoice')}
+                    </span>
+                  )
+                )}
+                <button
+                  onClick={() => toggleMe(speaker)}
+                  className="ml-auto rounded px-1.5 py-0.5 text-gray-500 hover:bg-gray-100"
+                  title={t('speakers.meHint')}
+                >
+                  {speaker.isMe ? t('speakers.notMe') : t('speakers.thisIsMe')}
+                </button>
+              </div>
             </div>
           ))}
 

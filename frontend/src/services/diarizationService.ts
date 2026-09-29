@@ -16,6 +16,8 @@ export interface MeetingSpeaker {
   nameSource: 'voice' | 'inferred' | 'manual' | null;
   /** Quote supporting an inferred name. */
   nameEvidence: string | null;
+  /** The app's user (recognized by microphone or voice, or set by them). */
+  isMe: boolean;
 }
 
 export interface DiarizeOutcome {
