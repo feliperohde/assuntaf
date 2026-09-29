@@ -1,4 +1,5 @@
 use posthog_rs::{Client, Event};
+use super::ga4::Ga4Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -34,11 +35,23 @@ fn meeting_started_properties(meeting_id: &str) -> HashMap<String, String> {
     properties
 }
 
+/// Where usage events go. Each provider is used only when its keys are set;
+/// with both set, every event goes to both.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnalyticsConfig {
+    /// PostHog project API key ("phc_…").
     pub api_key: String,
     pub host: Option<String>,
     pub enabled: bool,
+    /// Google Analytics 4 web stream "G-…" (Measurement Protocol).
+    #[serde(default)]
+    pub ga4_measurement_id: String,
+    /// Measurement Protocol API secret of that stream.
+    #[serde(default)]
+    pub ga4_api_secret: String,
+    /// GA4 collect endpoint base URL (tests); None = Google.
+    #[serde(default)]
+    pub ga4_endpoint: Option<String>,
 }
 
 impl Default for AnalyticsConfig {
@@ -47,6 +60,9 @@ impl Default for AnalyticsConfig {
             api_key: String::new(),
             host: Some("https://us.i.posthog.com".to_string()),
             enabled: false,
+            ga4_measurement_id: String::new(),
+            ga4_api_secret: String::new(),
+            ga4_endpoint: None,
         }
     }
 }
@@ -77,7 +93,10 @@ impl UserSession {
 
 pub struct AnalyticsClient {
     client: Option<Arc<Client>>,
+    ga4: Option<Arc<Ga4Client>>,
     config: AnalyticsConfig,
+    /// Sent with every GA4 event (GA4 has no separate identify call).
+    user_properties: Arc<Mutex<HashMap<String, String>>>,
     user_id: Arc<Mutex<Option<String>>>,
     current_session: Arc<Mutex<Option<UserSession>>>,
 }
@@ -85,29 +104,49 @@ pub struct AnalyticsClient {
 impl AnalyticsClient {
     pub async fn new(config: AnalyticsConfig) -> Self {
         let client = if config.enabled && !config.api_key.is_empty() {
-            Some(Arc::new(posthog_rs::client(config.api_key.as_str()).await))
+            // Capture endpoint of the configured host (US/EU cloud or self-hosted)
+            let host = config.host.as_deref().unwrap_or("https://us.i.posthog.com").trim_end_matches('/');
+            match posthog_rs::ClientOptionsBuilder::default()
+                .api_key(config.api_key.clone())
+                .api_endpoint(format!("{host}/i/v0/e/"))
+                .build()
+            {
+                Ok(options) => Some(Arc::new(posthog_rs::client(options).await)),
+                Err(e) => {
+                    log::warn!("Invalid PostHog settings: {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        let ga4 = if config.enabled && !config.ga4_measurement_id.trim().is_empty() && !config.ga4_api_secret.trim().is_empty() {
+            Some(Arc::new(Ga4Client::new(config.ga4_endpoint.as_deref(), &config.ga4_measurement_id, &config.ga4_api_secret)))
         } else {
             None
         };
 
         Self {
             client,
+            ga4,
             config,
+            user_properties: Arc::new(Mutex::new(HashMap::new())),
             user_id: Arc::new(Mutex::new(None)),
             current_session: Arc::new(Mutex::new(None)),
         }
     }
 
     pub async fn identify(&self, user_id: String, properties: Option<HashMap<String, String>>) -> Result<(), String> {
-        let client = match &self.client {
-            Some(client) => Arc::clone(client),
-            None => return Ok(()),
-        };
+        if self.client.is_none() && self.ga4.is_none() {
+            return Ok(());
+        }
 
         // Store user ID for future events
         *self.user_id.lock().await = Some(user_id.clone());
 
         let properties = sanitize_analytics_properties(properties.unwrap_or_default());
+        self.user_properties.lock().await.extend(properties.clone());
+        let Some(client) = self.client.clone() else { return Ok(()) };
         
         let mut event = Event::new("$identify", &user_id);
         
@@ -126,10 +165,9 @@ impl AnalyticsClient {
     }
 
     pub async fn track_event(&self, event_name: &str, properties: Option<HashMap<String, String>>) -> Result<(), String> {
-        let client = match &self.client {
-            Some(client) => Arc::clone(client),
-            None => return Ok(()),
-        };
+        if self.client.is_none() && self.ga4.is_none() {
+            return Ok(());
+        }
 
         let user_id = match self.user_id.lock().await.clone() {
             Some(id) => id,
@@ -147,11 +185,21 @@ impl AnalyticsClient {
         properties.insert("app_version".to_string(), env!("CARGO_PKG_VERSION").to_string());
 
         // Add session information to all events
+        let mut session_number = None;
         if let Some(session) = self.current_session.lock().await.as_ref() {
             properties.insert("session_id".to_string(), session.session_id.clone());
             properties.insert("session_duration".to_string(), session.duration_seconds().to_string());
+            session_number = Some(session.start_time.timestamp());
         }
-        
+
+        if let Some(ga4) = &self.ga4 {
+            let user_properties = self.user_properties.lock().await.clone();
+            if let Err(e) = ga4.send(&user_id, &event_name, &properties, session_number, &user_properties).await {
+                log::warn!("Failed to send event {} to Google Analytics: {}", event_name, e);
+            }
+        }
+        let Some(client) = self.client.clone() else { return Ok(()) };
+
         let mut event = Event::new(&event_name, &user_id);
         
         // Add event properties
@@ -420,14 +468,16 @@ impl AnalyticsClient {
     }
 
     pub fn is_enabled(&self) -> bool {
-        self.config.enabled && self.client.is_some()
+        self.config.enabled && (self.client.is_some() || self.ga4.is_some())
     }
 
     pub async fn set_user_properties(&self, properties: HashMap<String, String>) -> Result<(), String> {
-        let client = match &self.client {
-            Some(client) => Arc::clone(client),
-            None => return Ok(()),
-        };
+        if self.client.is_none() && self.ga4.is_none() {
+            return Ok(());
+        }
+        // GA4 receives them with the next events
+        self.user_properties.lock().await.extend(sanitize_analytics_properties(properties.clone()));
+        let Some(client) = self.client.clone() else { return Ok(()) };
 
         let user_id = match self.user_id.lock().await.clone() {
             Some(id) => id,
@@ -545,11 +595,14 @@ mod tests {
                 )
                 .await,
             )),
+            ga4: None,
             config: AnalyticsConfig {
                 api_key: "test".to_string(),
                 host: Some(endpoint),
                 enabled: true,
+                ..Default::default()
             },
+            user_properties: Arc::new(Mutex::new(HashMap::new())),
             user_id: Arc::new(Mutex::new(Some("user".to_string()))),
             current_session: Arc::new(Mutex::new(Some(UserSession::new("user".to_string())))),
         };
@@ -559,6 +612,54 @@ mod tests {
             .expect("ending a session must not wait on its own session mutex")
             .unwrap();
         capture_server.await.unwrap();
+    }
+
+    /// With only GA4 keys, events go to the Measurement Protocol endpoint.
+    #[tokio::test]
+    async fn ga4_receives_events_when_configured() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut buf = [0; 4096];
+            while !String::from_utf8_lossy(&request).contains("recording_started") {
+                let n = stream.read(&mut buf).await.unwrap();
+                if n == 0 {
+                    break;
+                }
+                request.extend_from_slice(&buf[..n]);
+            }
+            stream
+                .write_all(b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                .await
+                .unwrap();
+            String::from_utf8_lossy(&request).to_string()
+        });
+        let analytics = AnalyticsClient::new(AnalyticsConfig {
+            enabled: true,
+            ga4_measurement_id: "G-TEST".into(),
+            ga4_api_secret: "secret".into(),
+            ga4_endpoint: Some(endpoint),
+            ..Default::default()
+        })
+        .await;
+        assert!(analytics.is_enabled());
+        assert!(analytics.client.is_none()); // no PostHog key
+        analytics.identify("user-1".into(), None).await.unwrap();
+        analytics.track_recording_started("meeting-1").await.unwrap();
+
+        let request = timeout(Duration::from_secs(2), server).await.unwrap().unwrap();
+        assert!(request.starts_with("POST /mp/collect?measurement_id=G-TEST&api_secret=secret "));
+        assert!(request.contains("\"client_id\":\"user-1\""));
+    }
+
+    #[tokio::test]
+    async fn without_keys_nothing_is_sent() {
+        let analytics = AnalyticsClient::new(AnalyticsConfig { enabled: true, ..Default::default() }).await;
+        assert!(!analytics.is_enabled());
+        analytics.identify("user".into(), None).await.unwrap();
+        analytics.track_event("app_started", None).await.unwrap();
     }
 
     #[test]

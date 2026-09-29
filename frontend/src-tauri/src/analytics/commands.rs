@@ -6,12 +6,33 @@ use crate::analytics::{AnalyticsClient, AnalyticsConfig};
 // Global analytics client
 static ANALYTICS_CLIENT: std::sync::Mutex<Option<Arc<AnalyticsClient>>> = std::sync::Mutex::new(None);
 
+// Keys of the services that receive usage events (only after the user turns on
+// Usage Analytics in Settings). A service with an empty key is not used; with
+// both set, events go to both. Each can also be set at build time through the
+// environment variable named next to it.
+
+/// PostHog project API key ("phc_…"): PostHog → Project settings → Project API key.
+/// Env: ASSUNTA_POSTHOG_KEY
+const POSTHOG_API_KEY: &str = "phc_v5ti2nkWTTy76KwEdxBE7eCW95kNmUHbkF8mtwu5XCsZ";
+/// PostHog host of that project (US or EU cloud, or your own instance).
+/// Env: ASSUNTA_POSTHOG_HOST
+const POSTHOG_HOST: &str = "https://us.i.posthog.com";
+/// Google Analytics 4 web stream Measurement ID ("G-…"): Admin → Data streams.
+/// Env: ASSUNTA_GA_MEASUREMENT_ID
+const GA_MEASUREMENT_ID: &str = "";
+/// Measurement Protocol API secret of that stream (Data streams → stream →
+/// Measurement Protocol API secrets). Env: ASSUNTA_GA_API_SECRET
+const GA_API_SECRET: &str = "";
+
 #[command]
 pub async fn init_analytics() -> Result<(), String> {
     let config = AnalyticsConfig {
-        api_key: "phc_ohznXPkRSJYWmrfez9mYxtXv5U5Nekq3iiUts87dJfcr".to_string(),
-        host: Some("https://us.i.posthog.com".to_string()),
+        api_key: option_env!("ASSUNTA_POSTHOG_KEY").unwrap_or(POSTHOG_API_KEY).to_string(),
+        host: Some(option_env!("ASSUNTA_POSTHOG_HOST").unwrap_or(POSTHOG_HOST).to_string()),
         enabled: true,
+        ga4_measurement_id: option_env!("ASSUNTA_GA_MEASUREMENT_ID").unwrap_or(GA_MEASUREMENT_ID).to_string(),
+        ga4_api_secret: option_env!("ASSUNTA_GA_API_SECRET").unwrap_or(GA_API_SECRET).to_string(),
+        ga4_endpoint: None,
     };
     
     let client = Arc::new(AnalyticsClient::new(config).await);

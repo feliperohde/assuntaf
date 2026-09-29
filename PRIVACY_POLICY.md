@@ -54,12 +54,12 @@ When enabled, analytics helps us with:
 - **Open Source Sustainability**: Ensuring the project meets user needs effectively
 
 ### Analytics Implementation
-- **Provider**: PostHog (privacy-focused analytics platform)
+- **Providers**: PostHog and/or Google Analytics 4 (Measurement Protocol, sent from the app core; no tracking script in the interface), depending on which keys the build is configured with
 - **Default**: Off by default; analytics starts only after you enable it in settings
 - **Anonymization**: All data linked to generated user IDs only - no personal identification
 - **Data retention**: 12 months maximum, then automatically deleted
 - **Encryption**: All data encrypted in transit using industry-standard protocols
-- **Location**: Data processed in accordance with PostHog's privacy policy
+- **Location**: Data processed in accordance with the privacy policies of PostHog and Google Analytics
 - **Access Control**: Strictly limited to core development team members
 
 ## Third-Party Services
@@ -72,6 +72,7 @@ If you choose to use external LLM providers:
 
 ### Analytics Service (Optional)
 - **PostHog**: Used for usage analytics when enabled
+- **Google Analytics 4**: Used for usage analytics when enabled
 - **Data**: Only anonymized usage patterns, no meeting content
 - **Control**: Completely optional, off by default, and user-controlled
 
