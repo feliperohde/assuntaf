@@ -4,7 +4,8 @@ use tauri::{AppHandle, Runtime};
 
 use super::answer::{ask_project, Answer, ConversationTurn};
 use super::entities::{facts_by_type, list_tickets, ticket_facts, FactRow, TicketSummary};
-use super::indexer::{embedder_from_config, index_meeting_with_app, IndexOutcome};
+use super::embeddings::{probe_ollama, OllamaProbe};
+use super::indexer::{embedder_from_config, index_meeting_with_app, resolve_endpoint, IndexOutcome};
 use super::llm::ConfiguredChatModel;
 use super::retriever::{hybrid_search, SearchResponse};
 use super::store::{ProjectIndexStatus, RagConfig, RagStore, SearchFilters};
@@ -197,4 +198,16 @@ pub async fn rag_list_facts(
     )
     .await
     .map_err(|e| err("list facts", e))
+}
+
+/// Checks an Ollama server for the embedding model. `endpoint` is what the user typed
+/// (empty = same fallback as indexing: summary Ollama endpoint, then localhost).
+#[tauri::command]
+pub async fn rag_test_ollama(
+    state: tauri::State<'_, AppState>,
+    endpoint: Option<String>,
+    model: String,
+) -> Result<OllamaProbe, String> {
+    let endpoint = resolve_endpoint(state.db_manager.pool(), endpoint.as_deref()).await;
+    Ok(probe_ollama(endpoint.as_deref(), &model).await)
 }
