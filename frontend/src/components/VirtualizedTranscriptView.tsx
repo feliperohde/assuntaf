@@ -35,6 +35,8 @@ export interface VirtualizedTranscriptViewProps {
     totalCount?: number;
     loadedCount?: number;
     onLoadMore?: () => void;
+    /** Extra content under the welcome message when idle with no transcript (Home) */
+    emptyStateExtra?: React.ReactNode;
 }
 
 // Threshold for enabling virtualization (below this, use simple rendering)
@@ -128,6 +130,7 @@ export const VirtualizedTranscriptView: React.FC<VirtualizedTranscriptViewProps>
     totalCount = 0,
     loadedCount = 0,
     onLoadMore,
+    emptyStateExtra,
 }) => {
   const { t } = useI18n();
     // Create scroll ref first - shared between virtualizer and auto-scroll hook
@@ -264,6 +267,7 @@ export const VirtualizedTranscriptView: React.FC<VirtualizedTranscriptViewProps>
                         <>
                             <p className="text-lg font-semibold">{t('transcript.welcome')}</p>
                             <p className="text-xs mt-1">{t('transcript.startToSee')}</p>
+                            {emptyStateExtra}
                         </>
                     )}
                 </motion.div>

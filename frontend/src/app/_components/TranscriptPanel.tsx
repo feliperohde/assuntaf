@@ -1,4 +1,5 @@
 import { VirtualizedTranscriptView } from '@/components/VirtualizedTranscriptView';
+import { HomeAsk } from '@/components/HomeAsk';
 import { PermissionWarning } from '@/components/PermissionWarning';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
@@ -116,6 +117,7 @@ export function TranscriptPanel({
               isStopping={isStopping}
               enableStreaming={isRecording}
               showConfidence={true}
+              emptyStateExtra={<HomeAsk />}
             />
           </div>
         </div>

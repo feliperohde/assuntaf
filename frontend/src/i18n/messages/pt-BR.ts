@@ -77,6 +77,8 @@ export const ptBR: Record<MessageKey, string> = {
   "facts.nothing": "Nada registrado ainda.",
   "facts.owner": "Responsável: {name}",
   "facts.tickets": "Tickets",
+  "home.askPlaceholder": "O que foi decidido, quem disse o quê, por que um ticket está bloqueado…",
+  "home.askTitle": "Pergunte sobre as reuniões de {project}",
   "kind.fact": "Fato registrado",
   "kind.notes": "Notas",
   "kind.summary": "Resumo",

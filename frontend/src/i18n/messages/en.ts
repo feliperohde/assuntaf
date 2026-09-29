@@ -75,6 +75,8 @@ export const en = {
   "facts.nothing": "Nothing recorded yet.",
   "facts.owner": "Owner: {name}",
   "facts.tickets": "Tickets",
+  "home.askPlaceholder": "What was decided, who said what, why a ticket is blocked…",
+  "home.askTitle": "Ask about the meetings of {project}",
   "kind.fact": "Recorded fact",
   "kind.notes": "Notes",
   "kind.summary": "Summary",
