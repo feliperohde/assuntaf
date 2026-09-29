@@ -20,6 +20,8 @@ interface SidebarItem {
 export interface CurrentMeeting {
   id: string;
   title: string;
+  /** When the meeting was created (list views). */
+  createdAt?: string;
 }
 
 // Search result type for transcript search
@@ -139,7 +141,8 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
         const meetings = await invoke('api_get_meetings', { projectId: activeProjectId }) as Array<{ id: string, title: string }>;
         const transformedMeetings = meetings.map((meeting: any) => ({
           id: meeting.id,
-          title: meeting.title
+          title: meeting.title,
+          createdAt: meeting.created_at ?? meeting.createdAt,
         }));
         setMeetings(transformedMeetings);
         Analytics.trackBackendConnection(true);
