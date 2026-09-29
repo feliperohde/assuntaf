@@ -7,11 +7,12 @@ import { Label } from './ui/label';
 import { Eye, EyeOff, Lock, Unlock } from 'lucide-react';
 import { ModelManager } from './WhisperModelManager';
 import { ParakeetModelManager } from './ParakeetModelManager';
+import { RemoteTranscriptionSettings } from './RemoteTranscriptionSettings';
 import { useI18n } from '@/i18n';
 
 
 export interface TranscriptModelProps {
-    provider: 'localWhisper' | 'parakeet' | 'deepgram' | 'elevenLabs' | 'groq' | 'openai';
+    provider: 'localWhisper' | 'parakeet' | 'remote' | 'deepgram' | 'elevenLabs' | 'groq' | 'openai';
     model: string;
     apiKey?: string | null;
 }
@@ -55,6 +56,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
     const modelOptions = {
         localWhisper: [], // Model selection handled by ModelManager component
         parakeet: [], // Model selection handled by ParakeetModelManager component
+        remote: [], // Configured in RemoteTranscriptionSettings
         deepgram: ['nova-2-phonecall'],
         elevenLabs: ['eleven_multilingual_v2'],
         groq: ['llama-3.3-70b-versatile'],
@@ -114,7 +116,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                                 onValueChange={(value) => {
                                     const provider = value as TranscriptModelProps['provider'];
                                     setUiProvider(provider);
-                                    if (provider !== 'localWhisper' && provider !== 'parakeet') {
+                                    if (provider !== 'localWhisper' && provider !== 'parakeet' && provider !== 'remote') {
                                         fetchApiKey(provider);
                                     }
                                 }}
@@ -125,6 +127,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                                 <SelectContent>
                                     <SelectItem value="parakeet">{t('transcriptSettings.parakeet')}</SelectItem>
                                     <SelectItem value="localWhisper">{t('transcriptSettings.whisper')}</SelectItem>
+                                    <SelectItem value="remote">{t('transcriptSettings.remote')}</SelectItem>
                                     {/* <SelectItem value="deepgram">{t('transcriptSettings.deepgram')}</SelectItem>
                                     <SelectItem value="elevenLabs">☁️ ElevenLabs</SelectItem>
                                     <SelectItem value="groq">☁️ Groq</SelectItem>
@@ -132,7 +135,7 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                                 </SelectContent>
                             </Select>
 
-                            {uiProvider !== 'localWhisper' && uiProvider !== 'parakeet' && (
+                            {uiProvider !== 'localWhisper' && uiProvider !== 'parakeet' && uiProvider !== 'remote' && (
                                 <Select
                                     value={transcriptModelConfig.model}
                                     onValueChange={(value) => {
@@ -162,6 +165,15 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                                 autoSave={true}
                             />
                         </div>
+                    )}
+
+                    {uiProvider === 'remote' && (
+                        <RemoteTranscriptionSettings
+                            onSaved={config => {
+                                setTranscriptModelConfig({ ...transcriptModelConfig, provider: 'remote', model: config.model });
+                                if (onModelSelect) onModelSelect();
+                            }}
+                        />
                     )}
 
                     {uiProvider === 'parakeet' && (

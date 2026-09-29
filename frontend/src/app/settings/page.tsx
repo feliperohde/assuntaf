@@ -11,6 +11,7 @@ import { PreferenceSettings } from '@/components/PreferenceSettings';
 import { SummaryModelSettings } from '@/components/SummaryModelSettings';
 import { BetaSettings } from '@/components/BetaSettings';
 import { RagSettings } from '@/components/RagSettings';
+import { ExternalServicesOverview } from '@/components/ExternalServicesOverview';
 import { useConfig } from '@/contexts/ConfigContext';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useI18n, type MessageKey } from '@/i18n';
@@ -113,7 +114,8 @@ export default function SettingsPage() {
               />
             </TabsList>
 
-            <TabsContent value="general">
+            <TabsContent value="general" className="space-y-6">
+              <ExternalServicesOverview onConfigure={setActiveTab} />
               <PreferenceSettings />
             </TabsContent>
             <TabsContent value="recording">

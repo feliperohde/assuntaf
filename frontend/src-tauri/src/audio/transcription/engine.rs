@@ -51,6 +51,19 @@ impl TranscriptionEngine {
 // MODEL VALIDATION AND INITIALIZATION
 // ============================================================================
 
+/// The configured remote transcription server.
+async fn remote_config<R: Runtime>(
+    app: &AppHandle<R>,
+) -> Result<super::remote_provider::RemoteTranscriptionConfig, String> {
+    let state = app
+        .try_state::<crate::state::AppState>()
+        .ok_or_else(|| "App state not available".to_string())?;
+    super::remote_provider::load_config(state.db_manager.pool())
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "No remote transcription server configured (Settings → Transcription)".to_string())
+}
+
 /// Validate that transcription models (Whisper or Parakeet) are ready before starting recording
 pub async fn validate_transcription_model_ready<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     // Check transcript configuration to determine which engine to validate
@@ -88,6 +101,15 @@ pub async fn validate_transcription_model_ready<R: Runtime>(app: &AppHandle<R>) 
 
     // Validate based on provider
     match config.provider.as_str() {
+        super::remote_provider::PROVIDER => {
+            // The server must answer before recording, or every line would be lost
+            let remote = remote_config(app).await?;
+            info!("🔍 Checking remote transcription server {}", remote.endpoint);
+            super::remote_provider::RemoteTranscriptionProvider::new(remote)
+                .test()
+                .await
+                .map_err(|e| format!("Remote transcription server not available: {}", e))
+        }
         "localWhisper" => {
             info!("🔍 Validating Whisper model...");
             // Ensure whisper engine is initialized first
@@ -184,6 +206,13 @@ pub async fn get_or_init_transcription_engine<R: Runtime>(
 
     // Initialize the appropriate engine based on provider
     match config.provider.as_str() {
+        super::remote_provider::PROVIDER => {
+            let remote = remote_config(app).await?;
+            info!("🌐 Transcribing on remote server {} (model {})", remote.endpoint, remote.model);
+            Ok(TranscriptionEngine::Provider(Arc::new(
+                super::remote_provider::RemoteTranscriptionProvider::new(remote),
+            )))
+        }
         "parakeet" => {
             info!("🦜 Initializing Parakeet transcription engine");
 
