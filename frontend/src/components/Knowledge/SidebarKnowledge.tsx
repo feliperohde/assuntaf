@@ -16,6 +16,7 @@ import {
   TicketSummary,
   ragService,
 } from '@/services/ragService';
+import { useI18n, type MessageKey } from '@/i18n';
 
 export type KnowledgeView = 'asks' | 'tickets' | 'decision' | 'action';
 
@@ -23,11 +24,11 @@ export type KnowledgeView = 'asks' | 'tickets' | 'decision' | 'action';
 const PREVIEW_SIZE = 10;
 const OPEN_KEY = 'assunta.sidebar.knowledge.open';
 
-const SECTIONS: { view: KnowledgeView; label: string; icon: React.ElementType }[] = [
-  { view: 'asks', label: 'Ask history', icon: History },
-  { view: 'tickets', label: 'Tickets', icon: Ticket },
-  { view: 'decision', label: 'Decisions', icon: Gavel },
-  { view: 'action', label: 'Action items', icon: ListTodo },
+const SECTIONS: { view: KnowledgeView; label: MessageKey; icon: React.ElementType }[] = [
+  { view: 'asks', label: 'knowledge.askHistory', icon: History },
+  { view: 'tickets', label: 'facts.tickets', icon: Ticket },
+  { view: 'decision', label: 'facts.decisions', icon: Gavel },
+  { view: 'action', label: 'facts.actions', icon: ListTodo },
 ];
 
 type SectionData =
@@ -61,6 +62,7 @@ function readOpen(): KnowledgeView[] {
  * new question.
  */
 export function SidebarKnowledge() {
+  const { t } = useI18n();
   const router = useRouter();
   const { activeProjectId } = useProject();
   const { setCurrentMeeting } = useSidebar();
@@ -138,9 +140,9 @@ export function SidebarKnowledge() {
           <button key={entry.id} className={itemClass} onClick={() => router.push(`/ask?history=${entry.id}`)} title={entry.answerPreview}>
             <span className="flex items-center gap-1.5">
               {entry.found ? (
-                <CheckCircle2 className="w-3 h-3 flex-shrink-0 text-green-600" aria-label="Answered" />
+                <CheckCircle2 className="w-3 h-3 flex-shrink-0 text-green-600" aria-label={t('knowledge.answered')} />
               ) : (
-                <CircleHelp className="w-3 h-3 flex-shrink-0 text-gray-400" aria-label="Not found in meetings" />
+                <CircleHelp className="w-3 h-3 flex-shrink-0 text-gray-400" aria-label={t('knowledge.notFound')} />
               )}
               <span className="truncate text-gray-800">{entry.question}</span>
             </span>
@@ -190,15 +192,15 @@ export function SidebarKnowledge() {
             >
               {isOpen ? <ChevronDown className="w-3.5 h-3.5 text-gray-500" /> : <ChevronRight className="w-3.5 h-3.5 text-gray-500" />}
               <Icon className="w-4 h-4 text-gray-600" />
-              <span>{label}</span>
+              <span>{t(label)}</span>
               {total !== undefined && <span className="ml-auto text-xs font-normal text-gray-400">{total}</span>}
             </button>
             {isOpen && (
               <div className="pl-5 pb-1">
-                {!section && <p className="px-2 py-1 text-xs text-gray-400">Loading…</p>}
+                {!section && <p className="px-2 py-1 text-xs text-gray-400">{t('common.loadingEllipsis')}</p>}
                 {section && section.page.items.length === 0 && (
                   <p className="px-2 py-1 text-xs text-gray-400">
-                    {view === 'asks' ? 'No questions yet.' : 'Nothing extracted from meetings yet.'}
+                    {view === 'asks' ? t('knowledge.noQuestions') : t('knowledge.nothingExtracted')}
                   </p>
                 )}
                 {section && renderItems(section)}
@@ -207,7 +209,7 @@ export function SidebarKnowledge() {
                     onClick={() => router.push(`/knowledge?view=${view}`)}
                     className="px-2 py-1 text-xs font-medium text-blue-600 hover:underline"
                   >
-                    See all{section.page.total > PREVIEW_SIZE ? ` (${section.page.total})` : ''} →
+                    {t('knowledge.seeAll')}{section.page.total > PREVIEW_SIZE ? ` (${section.page.total})` : ''} →
                   </button>
                 )}
               </div>
