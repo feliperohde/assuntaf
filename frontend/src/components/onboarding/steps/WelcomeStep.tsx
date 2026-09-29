@@ -3,6 +3,7 @@ import { Lock, Sparkles, Cpu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { OnboardingContainer } from '../OnboardingContainer';
 import { useOnboarding } from '@/contexts/OnboardingContext';
+import { AssuntaMark } from '@/components/AssuntaMark';
 
 export function WelcomeStep() {
   const { goNext } = useOnboarding();
@@ -14,7 +15,7 @@ export function WelcomeStep() {
     },
     {
       icon: Sparkles,
-      title: 'Intelligent summaries & insights',
+      title: 'Projects, summaries and answers about every meeting',
     },
     {
       icon: Cpu,
@@ -24,14 +25,13 @@ export function WelcomeStep() {
 
   return (
     <OnboardingContainer
-      title="Welcome to Meetily"
+      title="Welcome to Assunta"
       description="Record. Transcribe. Summarize. All on your device."
       step={1}
       hideProgress={true}
     >
       <div className="flex flex-col items-center space-y-10">
-        {/* Divider */}
-        <div className="w-16 h-px bg-gray-300" />
+        <AssuntaMark size={72} />
 
         {/* Features Card */}
         <div className="w-full max-w-md bg-white rounded-lg border border-gray-200 shadow-sm p-6 space-y-4">

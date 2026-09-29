@@ -1,3 +1,22 @@
+<div align="center">
+  <img src="frontend/src-tauri/icons/source/assunta-icon.svg" width="120" alt="Assunta" />
+  <h1>Assunta</h1>
+  <p><b>Your meetings, organized by project and searchable by meaning — on your own machine.</b></p>
+</div>
+
+Assunta records, transcribes and summarizes meetings locally, and turns them into a knowledge base per project:
+
+- **Projects** — every recording, transcript and summary belongs to a project with its own context, glossary and members.
+- **Ask** — ask what was discussed, when and by whom; answers cite the meeting, date and minute.
+- **Tickets, decisions and action items** — extracted automatically from each meeting.
+- **Who said what** — speakers are detected and recognized by voice once linked to project members.
+
+See [docs/plans/projects-and-rag.md](docs/plans/projects-and-rag.md) for the architecture and [docs/BUILDING.md](docs/BUILDING.md) to build it.
+
+> Assunta is based on [Meetily](https://github.com/Zackriya-Solutions/meeting-minutes) by Zackriya Solutions (MIT License). The upstream README follows.
+
+---
+
 <div align="center" style="border-bottom: none">
     <h1>
         <img src="docs/Meetily-6.png" style="border-radius: 10px;" />

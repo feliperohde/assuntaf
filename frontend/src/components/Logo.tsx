@@ -1,8 +1,8 @@
 import React from "react";
-import Image from "next/image";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { VisuallyHidden } from "./ui/visually-hidden";
 import { About } from "./About";
+import { AssuntaMark, AssuntaWordmark } from "./AssuntaMark";
 
 interface LogoProps {
   isCollapsed: boolean;
@@ -18,16 +18,9 @@ const Logo = React.forwardRef<HTMLButtonElement, LogoProps>(
               ref={ref}
               type="button"
               className="flex items-center justify-center mb-2 cursor-pointer bg-transparent border-none p-0 hover:opacity-80 transition-opacity"
-              aria-label="About Meetily"
+              aria-label="About Assunta"
             >
-              <Image
-                src="/logo-collapsed.png"
-                alt="Meetily"
-                width={40}
-                height={40}
-                className="object-contain"
-                priority
-              />
+              <AssuntaMark size={36} />
             </button>
           </DialogTrigger>
         ) : (
@@ -35,16 +28,16 @@ const Logo = React.forwardRef<HTMLButtonElement, LogoProps>(
             <button
               ref={ref}
               type="button"
-              className="w-full text-lg text-center border rounded-full bg-blue-50 border-white font-semibold text-gray-700 mb-2 block items-center cursor-pointer hover:opacity-80 transition-opacity focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              aria-label="About Meetily"
+              className="w-full flex items-center justify-center py-1 mb-2 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              aria-label="About Assunta"
             >
-              <span>Meetily</span>
+              <AssuntaWordmark size={30} />
             </button>
           </DialogTrigger>
         )}
         <DialogContent>
           <VisuallyHidden>
-            <DialogTitle>About Meetily</DialogTitle>
+            <DialogTitle>About Assunta</DialogTitle>
           </VisuallyHidden>
           <About />
         </DialogContent>
