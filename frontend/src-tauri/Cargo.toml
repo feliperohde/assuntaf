@@ -1,7 +1,7 @@
 [package]
-name = "meetily"
+name = "assunta"
 version = "0.4.1"
-description = "A Tauri App for meeting minutes"
+description = "Assunta: meeting assistant with projects, search and Q&A over your meetings"
 authors = ["Sujith S"]
 license = "MIT"
 repository = "https://github.com/Zackriya-Solutions/meeting-minutes"
