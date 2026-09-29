@@ -13,7 +13,7 @@ static ANALYTICS_CLIENT: std::sync::Mutex<Option<Arc<AnalyticsClient>>> = std::s
 
 /// PostHog project API key ("phc_…"): PostHog → Project settings → Project API key.
 /// Env: ASSUNTA_POSTHOG_KEY
-const POSTHOG_API_KEY: &str = "";
+const POSTHOG_API_KEY: &str = "phc_v5ti2nkWTTy76KwEdxBE7eCW95kNmUHbkF8mtwu5XCsZ";
 /// PostHog host of that project (US or EU cloud, or your own instance).
 /// Env: ASSUNTA_POSTHOG_HOST
 const POSTHOG_HOST: &str = "https://us.i.posthog.com";
