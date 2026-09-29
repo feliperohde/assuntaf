@@ -555,7 +555,11 @@ impl SummaryService {
             }),
         };
 
-        let client = reqwest::Client::new();
+        let client = match (&provider, ollama_endpoint.as_deref(), custom_openai_endpoint.as_deref()) {
+            (LLMProvider::Ollama, endpoint, _) => crate::net::client_for(endpoint.unwrap_or("http://localhost:11434")),
+            (LLMProvider::CustomOpenAI, _, Some(endpoint)) => crate::net::client_for(endpoint),
+            _ => reqwest::Client::new(),
+        };
         let result = generate_meeting_summary(
             &client,
             &provider,
