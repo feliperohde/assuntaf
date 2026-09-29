@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DIARIZATION_EVENT, MeetingSpeaker, diarizationService } from '@/services/diarizationService';
 import { ProjectMember, projectService } from '@/services/projectService';
+import { useI18n } from '@/i18n';
 
 const UNLINKED = '__none__';
 
@@ -25,6 +26,7 @@ function formatDuration(seconds: number) {
  * voice so they are recognized automatically in later meetings.
  */
 export function SpeakersPanel({ meetingId, onSpeakersChanged }: { meetingId: string; onSpeakersChanged?: () => void }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [speakers, setSpeakers] = useState<MeetingSpeaker[]>([]);
   const [members, setMembers] = useState<ProjectMember[]>([]);
@@ -69,21 +71,21 @@ export function SpeakersPanel({ meetingId, onSpeakersChanged }: { meetingId: str
       const outcome = await diarizationService.diarize(meetingId, Number.isFinite(count) && count > 0 ? count : null);
       setSpeakers(outcome.speakers);
       const extras = [
-        outcome.namedSpeakers > 0 && `${outcome.namedSpeakers} named from the transcript`,
-        outcome.mergedSpeakers > 0 && `${outcome.mergedSpeakers} duplicate(s) merged`,
+        outcome.namedSpeakers > 0 && t('speakers.namedFromTranscript', { count: outcome.namedSpeakers }),
+        outcome.mergedSpeakers > 0 && t('speakers.duplicatesMerged', { count: outcome.mergedSpeakers }),
       ].filter(Boolean);
-      toast.success(`Detected ${outcome.speakers.length} speaker(s)`, {
+      toast.success(t('speakers.detected', { count: outcome.speakers.length }), {
         description: [
-          `${outcome.assignedSegments} of ${outcome.totalSegments} transcript lines attributed.`,
+          t('speakers.linesAttributed', { assigned: outcome.assignedSegments, total: outcome.totalSegments }),
           extras.join(', '),
-          outcome.namingError && `Names not inferred: ${outcome.namingError}`,
+          outcome.namingError && t('speakers.namingError', { error: outcome.namingError }),
         ]
           .filter(Boolean)
           .join(' '),
       });
       onSpeakersChanged?.();
     } catch (error) {
-      toast.error('Speaker detection failed', { description: String(error) });
+      toast.error(t('speakers.detectFailed'), { description: String(error) });
     } finally {
       setDetecting(false);
     }
@@ -96,13 +98,13 @@ export function SpeakersPanel({ meetingId, onSpeakersChanged }: { meetingId: str
       await load();
       toast.success(
         outcome.named + outcome.merged > 0
-          ? `Named ${outcome.named} speaker(s)${outcome.merged ? `, merged ${outcome.merged}` : ''}`
-          : 'No names found in the transcript',
-        { description: 'Names come from introductions and people being addressed by name.' }
+          ? outcome.merged ? t('speakers.namedMerged', { count: outcome.named, merged: outcome.merged }) : t('speakers.named', { count: outcome.named })
+          : t('speakers.noNames'),
+        { description: t('speakers.namesHelp') }
       );
       if (outcome.named + outcome.merged > 0) onSpeakersChanged?.();
     } catch (error) {
-      toast.error('Could not infer names', { description: String(error) });
+      toast.error(t('speakers.inferFailed'), { description: String(error) });
     } finally {
       setNaming(false);
     }
@@ -111,10 +113,10 @@ export function SpeakersPanel({ meetingId, onSpeakersChanged }: { meetingId: str
   const merge = async (into: MeetingSpeaker, from: MeetingSpeaker) => {
     try {
       setSpeakers(await diarizationService.mergeSpeakers(into.id, from.id));
-      toast.success(`Merged ${from.memberName ?? from.label} into ${into.memberName ?? into.label}`);
+      toast.success(t('speakers.merged', { from: from.memberName ?? from.label, into: into.memberName ?? into.label }));
       onSpeakersChanged?.();
     } catch (error) {
-      toast.error('Failed to merge speakers', { description: String(error) });
+      toast.error(t('speakers.mergeFailed'), { description: String(error) });
     }
   };
 
@@ -123,7 +125,7 @@ export function SpeakersPanel({ meetingId, onSpeakersChanged }: { meetingId: str
       setSpeakers(await diarizationService.updateSpeaker(speaker.id, label, memberId));
       onSpeakersChanged?.();
     } catch (error) {
-      toast.error('Failed to update speaker', { description: String(error) });
+      toast.error(t('speakers.updateFailed'), { description: String(error) });
     }
   };
 
@@ -135,8 +137,8 @@ export function SpeakersPanel({ meetingId, onSpeakersChanged }: { meetingId: str
       >
         {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
         <Users className="w-4 h-4" />
-        <span className="font-medium">Speakers</span>
-        <span className="text-gray-400">{speakers.length > 0 ? `(${speakers.length})` : '— not detected'}</span>
+        <span className="font-medium">{t('speakers.title')}</span>
+        <span className="text-gray-400">{speakers.length > 0 ? `(${speakers.length})` : t('speakers.notDetected')}</span>
       </button>
 
       {open && (
@@ -154,17 +156,17 @@ export function SpeakersPanel({ meetingId, onSpeakersChanged }: { meetingId: str
                       update(speaker, label, speaker.memberId);
                     }
                   }}
-                  title="Speaker label"
+                  title={t('speakers.label')}
                 />
                 <Select
                   value={speaker.memberId ?? UNLINKED}
                   onValueChange={value => update(speaker, null, value === UNLINKED ? null : value)}
                 >
                   <SelectTrigger className="h-8 flex-1 min-w-[9rem]">
-                    <SelectValue placeholder="Link to member" />
+                    <SelectValue placeholder={t('speakers.linkMember')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={UNLINKED}>Not a project member</SelectItem>
+                    <SelectItem value={UNLINKED}>{t('speakers.notMember')}</SelectItem>
                     {members.map(member => (
                       <SelectItem key={member.id} value={member.id}>
                         {member.name}
@@ -175,8 +177,8 @@ export function SpeakersPanel({ meetingId, onSpeakersChanged }: { meetingId: str
                 </Select>
                 {speakers.length > 1 && (
                   <select
-                    aria-label={`Merge ${speaker.label} into another speaker`}
-                    title="Same person as another speaker? Merge them"
+                    aria-label={t('speakers.mergeAria', { name: speaker.label })}
+                    title={t('speakers.mergeTitle')}
                     value=""
                     onChange={e => {
                       const into = speakers.find(s => s.id === e.target.value);
@@ -184,7 +186,7 @@ export function SpeakersPanel({ meetingId, onSpeakersChanged }: { meetingId: str
                     }}
                     className="h-8 w-24 rounded-md border border-gray-200 bg-white px-1 text-xs text-gray-600"
                   >
-                    <option value="">Merge into…</option>
+                    <option value="">{t('speakers.mergeInto')}</option>
                     {speakers
                       .filter(other => other.id !== speaker.id)
                       .map(other => (
@@ -200,37 +202,37 @@ export function SpeakersPanel({ meetingId, onSpeakersChanged }: { meetingId: str
                 <div className="flex items-center gap-2 pl-1 text-xs text-violet-700">
                   <Sparkles className="w-3 h-3 flex-shrink-0" />
                   <span className="truncate" title={speaker.nameEvidence ?? undefined}>
-                    Guessed from the transcript{speaker.nameEvidence ? `: “${speaker.nameEvidence}”` : ''}
+                    {t('speakers.guessed')}{speaker.nameEvidence ? `: “${speaker.nameEvidence}”` : ''}
                   </span>
                   <button
                     onClick={() => update(speaker, speaker.label, speaker.memberId)}
                     className="ml-auto flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-violet-50"
-                    title={speaker.memberId ? 'Confirm: also teaches this member\'s voice' : 'Confirm this name'}
+                    title={speaker.memberId ? t('speakers.confirmMember') : t('speakers.confirmName')}
                   >
-                    <Check className="w-3 h-3" /> Confirm
+                    <Check className="w-3 h-3" /> {t('speakers.confirm')}
                   </button>
                 </div>
               )}
               {speaker.nameSource === 'voice' && (
                 <div className="flex items-center gap-1 pl-1 text-xs text-gray-500">
-                  <AudioLines className="w-3 h-3" /> Recognized by voice
+                  <AudioLines className="w-3 h-3" /> {t('speakers.byVoice')}
                 </div>
               )}
             </div>
           ))}
 
           {members.length === 0 && speakers.length > 0 && (
-            <p className="text-xs text-gray-500">Add members on the Projects page to link speakers to people.</p>
+            <p className="text-xs text-gray-500">{t('speakers.addMembers')}</p>
           )}
 
           <div className="flex flex-wrap items-center gap-2 pt-1">
-            <label className="flex items-center gap-1.5 text-xs text-gray-600" title="Leave empty to detect automatically">
-              People in the meeting
+            <label className="flex items-center gap-1.5 text-xs text-gray-600" title={t('speakers.peopleCountHint')}>
+              {t('speakers.peopleCount')}
               <Input
                 type="number"
                 min={1}
                 max={20}
-                placeholder="auto"
+                placeholder={t('speakers.auto')}
                 value={peopleCount}
                 onChange={e => setPeopleCount(e.target.value)}
                 className="h-8 w-16"
@@ -238,19 +240,17 @@ export function SpeakersPanel({ meetingId, onSpeakersChanged }: { meetingId: str
             </label>
             <Button variant="outline" size="sm" onClick={detect} disabled={detecting || naming}>
               {detecting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ScanFace className="w-4 h-4 mr-2" />}
-              {detecting ? 'Detecting…' : speakers.length > 0 ? 'Detect again' : 'Detect speakers'}
+              {detecting ? t('speakers.detecting') : speakers.length > 0 ? t('speakers.detectAgain') : t('speakers.detect')}
             </Button>
             {speakers.length > 0 && (
               <Button variant="outline" size="sm" onClick={inferNames} disabled={detecting || naming}>
                 {naming ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
-                Guess names
+                {t('speakers.guessNames')}
               </Button>
             )}
           </div>
           <p className="text-xs text-gray-500">
-            Runs locally on the recording; the first run downloads the speaker models (~35 MB). Names are guessed from
-            introductions and people addressed by name, using your summary model. Linking or confirming a member teaches
-            their voice so later meetings recognize them. If one person shows up twice, use “Merge into…”.
+            {t('speakers.help')}
           </p>
         </div>
       )}

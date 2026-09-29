@@ -18,14 +18,15 @@ import {
   formatTimestamp,
   ragService,
 } from '@/services/ragService';
+import { useI18n, type MessageKey } from '@/i18n';
 
 const PAGE_SIZE = 20;
 
-const VIEWS: { value: KnowledgeView; label: string }[] = [
-  { value: 'asks', label: 'Ask history' },
-  { value: 'tickets', label: 'Tickets' },
-  { value: 'decision', label: 'Decisions' },
-  { value: 'action', label: 'Action items' },
+const VIEWS: { value: KnowledgeView; label: MessageKey }[] = [
+  { value: 'asks', label: 'knowledge.askHistory' },
+  { value: 'tickets', label: 'facts.tickets' },
+  { value: 'decision', label: 'facts.decisions' },
+  { value: 'action', label: 'facts.actions' },
 ];
 
 type Rows =
@@ -38,6 +39,7 @@ function isView(value: string | null): value is KnowledgeView {
 }
 
 function KnowledgeContent() {
+  const { t, locale } = useI18n();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { activeProject, activeProjectId } = useProject();
@@ -151,7 +153,7 @@ function KnowledgeContent() {
           <span className="font-medium text-gray-800">{fact.meetingTitle}</span>
           <span>· {fact.meetingDate.slice(0, 10)}</span>
           {time && <span>· {time}</span>}
-          {fact.owner && <span className="ml-auto">Owner: {fact.owner}</span>}
+          {fact.owner && <span className="ml-auto">{t('facts.owner', { name: fact.owner })}</span>}
         </div>
         <p className="text-sm text-gray-700">{fact.content}</p>
       </button>
@@ -163,9 +165,7 @@ function KnowledgeContent() {
     if (rows.items.length === 0) {
       return (
         <p className="text-sm text-gray-400 py-8 text-center">
-          {view === 'asks'
-            ? 'No questions asked in this project yet.'
-            : 'Nothing extracted yet. Facts come from indexed meetings (Settings → Knowledge).'}
+          {view === 'asks' ? t('knowledge.noQuestionsProject') : t('knowledge.nothingYet')}
         </p>
       );
     }
@@ -178,12 +178,12 @@ function KnowledgeContent() {
                 {entry.found && <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-green-600" />}
                 <span className="font-medium text-gray-900">{entry.question}</span>
               </div>
-              <p className="text-sm text-gray-600 mt-1 line-clamp-2">{entry.answerPreview || 'No answer found.'}</p>
+              <p className="text-sm text-gray-600 mt-1 line-clamp-2">{entry.answerPreview || t('knowledge.noAnswer')}</p>
               <p className="text-xs text-gray-400 mt-1">
-                {new Date(entry.createdAt).toLocaleString()} · {entry.citationCount} source(s)
+                {t('knowledge.sources', { date: new Date(entry.createdAt).toLocaleString(locale), count: entry.citationCount })}
               </p>
             </button>
-            <Button variant="ghost" size="sm" onClick={() => deleteEntry(entry.id)} aria-label="Delete from history">
+            <Button variant="ghost" size="sm" onClick={() => deleteEntry(entry.id)} aria-label={t('knowledge.deleteFromHistory')}>
               <Trash2 className="w-4 h-4 text-gray-400" />
             </Button>
           </div>
@@ -202,7 +202,7 @@ function KnowledgeContent() {
                   <span className="font-mono font-semibold">{ticket.key}</span>
                   <FactBadge type={ticket.latestFactType} />
                   <span className="ml-auto text-xs text-gray-500">
-                    {ticket.lastMeetingDate.slice(0, 10)} · {ticket.factCount} mention(s)
+                    {t('facts.mentions', { date: ticket.lastMeetingDate.slice(0, 10), count: ticket.factCount })}
                   </span>
                 </div>
                 <p className="text-sm text-gray-600 mt-1">{ticket.latestContent}</p>
@@ -227,10 +227,10 @@ function KnowledgeContent() {
       <div className="border-b border-gray-200">
         <div className="max-w-4xl mx-auto px-8 py-6">
           <h1 className="text-3xl font-bold flex items-center gap-3">
-            <BookOpen className="w-7 h-7 text-gray-600" /> Knowledge
+            <BookOpen className="w-7 h-7 text-gray-600" /> {t('knowledge.title')}
           </h1>
           <p className="text-sm text-gray-500 mt-1">
-            From the meetings of <span className="font-medium">{activeProject?.name ?? 'this project'}</span>.
+            {t('knowledge.fromMeetingsOf')}<span className="font-medium">{activeProject?.name ?? t('ask.thisProject')}</span>.
           </p>
           <div className="flex items-center gap-1 mt-4">
             {VIEWS.map(v => (
@@ -239,7 +239,7 @@ function KnowledgeContent() {
                 onClick={() => setView(v.value)}
                 className={`px-3 py-1.5 text-sm rounded-md ${view === v.value ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
               >
-                {v.label}
+                {t(v.label)}
               </button>
             ))}
           </div>
@@ -250,7 +250,7 @@ function KnowledgeContent() {
         <div className="max-w-4xl mx-auto px-8 py-6 space-y-2">
           {loading && !rows && (
             <div className="flex items-center gap-2 text-sm text-gray-500">
-              <Loader2 className="w-4 h-4 animate-spin" /> Loading…
+              <Loader2 className="w-4 h-4 animate-spin" /> {t('common.loadingEllipsis')}
             </div>
           )}
           {renderRows()}
@@ -261,14 +261,14 @@ function KnowledgeContent() {
         <div className="border-t border-gray-200 bg-white">
           <div className="max-w-4xl mx-auto px-8 py-3 flex items-center justify-between text-sm text-gray-600">
             <span>
-              {first}–{last} of {total}
+              {t('knowledge.range', { first, last, total })}
             </span>
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" disabled={pageIndex === 0 || loading} onClick={() => setPageIndex(p => p - 1)}>
-                <ChevronLeft className="w-4 h-4" /> Previous
+                <ChevronLeft className="w-4 h-4" /> {t('common.previous')}
               </Button>
               <span>
-                Page {pageIndex + 1} / {pageCount}
+                {t('knowledge.page', { page: pageIndex + 1, pages: pageCount })}
               </span>
               <Button
                 variant="outline"
@@ -276,7 +276,7 @@ function KnowledgeContent() {
                 disabled={pageIndex + 1 >= pageCount || loading}
                 onClick={() => setPageIndex(p => p + 1)}
               >
-                Next <ChevronRight className="w-4 h-4" />
+                {t('common.next')} <ChevronRight className="w-4 h-4" />
               </Button>
             </div>
           </div>
