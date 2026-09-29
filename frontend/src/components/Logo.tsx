@@ -28,7 +28,7 @@ const Logo = React.forwardRef<HTMLButtonElement, LogoProps>(
             <button
               ref={ref}
               type="button"
-              className="w-full flex items-center justify-center py-1 mb-2 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className="w-full flex items-center justify-start px-1 py-1 mb-2 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               aria-label="About Assunta"
             >
               <AssuntaWordmark size={30} />
