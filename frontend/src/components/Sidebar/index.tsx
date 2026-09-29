@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { ChevronDown, ChevronRight, File, Settings, ChevronLeftCircle, ChevronRightCircle, Calendar, StickyNote, Home, Trash2, Mic, Square, Plus, Search, Pencil, NotebookPen, SearchIcon, X, Upload, FolderKanban, FolderInput, MessageSquareText } from 'lucide-react';
+import { ChevronDown, ChevronRight, File, Settings, ChevronLeftCircle, ChevronRightCircle, Calendar, StickyNote, Home, Trash2, Mic, Square, Plus, Search, Pencil, NotebookPen, SearchIcon, X, Upload, FolderKanban, FolderInput, MessageSquareText, DatabaseZap, Loader2 } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useSidebar } from './SidebarProvider';
 import type { CurrentMeeting } from '@/components/Sidebar/SidebarProvider';
@@ -21,6 +21,7 @@ import { useProject } from '@/contexts/ProjectContext';
 import { projectService } from '@/services/projectService';
 import { ProjectSelector } from './ProjectSelector';
 import { SidebarKnowledge } from '@/components/Knowledge/SidebarKnowledge';
+import { useReindexMeeting } from '@/hooks/useReindexMeeting';
 import {
   Select,
   SelectContent,
@@ -52,10 +53,62 @@ interface SidebarItem {
   children?: SidebarItem[];
 }
 
+/** Meetings listed in the sidebar; "See all" opens the paginated list. */
+const MEETINGS_PREVIEW = 15;
+
+function MeetingAction({
+  icon,
+  label,
+  onClick,
+  danger = false,
+  disabled = false,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      onClick={e => {
+        e.stopPropagation();
+        onClick();
+      }}
+      disabled={disabled}
+      className={`flex items-center gap-2 px-2.5 py-1.5 rounded-md text-left text-xs transition-colors disabled:opacity-50 ${
+        danger ? 'text-red-600 hover:bg-red-50' : 'text-gray-700 hover:bg-gray-100'
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
+/** Meeting actions in a light tooltip menu beside the item, on hover or focus. */
+function MeetingActionsTooltip({ actions, children }: { actions: React.ReactNode; children: React.ReactElement }) {
+  if (!actions) return children;
+  return (
+    <Tooltip delayDuration={350}>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent
+        side="right"
+        align="start"
+        sideOffset={8}
+        className="p-1 bg-white text-gray-700 border border-gray-200 shadow-lg"
+      >
+        <div className="flex flex-col min-w-[9rem]">{actions}</div>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 const Sidebar: React.FC = () => {
   const { t } = useI18n();
   const router = useRouter();
   const pathname = usePathname();
+  const { reindex, reindexingId } = useReindexMeeting();
   const {
     currentMeeting,
     setCurrentMeeting,
@@ -657,8 +710,36 @@ const Sidebar: React.FC = () => {
 
     if (isCollapsed) return null;
 
+    const actions = isMeetingItem ? (
+      <>
+        <MeetingAction
+          icon={reindexingId === item.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <DatabaseZap className="w-3.5 h-3.5" />}
+          label={t('reindex.action')}
+          disabled={reindexingId === item.id}
+          onClick={() => reindex(item.id)}
+        />
+        <MeetingAction
+          icon={<FolderInput className="w-3.5 h-3.5" />}
+          label={t('sidebar.moveShort')}
+          onClick={() => setMoveModalState({ isOpen: true, meetingId: item.id, targetProjectId: activeProjectId })}
+        />
+        <MeetingAction
+          icon={<Pencil className="w-3.5 h-3.5" />}
+          label={t('sidebar.renameShort')}
+          onClick={() => handleEditStart(item.id, item.title)}
+        />
+        <MeetingAction
+          icon={<Trash2 className="w-3.5 h-3.5" />}
+          label={t('common.delete')}
+          danger
+          onClick={() => setDeleteModalState({ isOpen: true, itemId: item.id })}
+        />
+      </>
+    ) : null;
+
     return (
       <div key={item.id}>
+        <MeetingActionsTooltip actions={actions}>
         <div
           className={`flex items-center transition-all duration-150 group ${item.type === 'folder' && depth === 0
             ? 'p-3 text-lg font-semibold h-10 mx-3 mt-3 rounded-lg'
@@ -712,48 +793,6 @@ const Sidebar: React.FC = () => {
                 <span className="flex-1 break-words">{item.title}</span>
               </div>
 
-              {/* Meeting actions, below the title: always shown for the open meeting, on hover for others */}
-              {isMeetingItem && (
-                <div
-                  className={`ml-8 flex items-center gap-1 text-xs text-gray-500 overflow-hidden transition-all duration-150 ${
-                    isActive
-                      ? 'max-h-8 mt-1 opacity-100'
-                      : 'max-h-0 opacity-0 group-hover:max-h-8 group-hover:mt-1 group-hover:opacity-100 group-focus-within:max-h-8 group-focus-within:mt-1 group-focus-within:opacity-100'
-                  }`}
-                >
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setMoveModalState({ isOpen: true, meetingId: item.id, targetProjectId: activeProjectId });
-                    }}
-                    className="flex items-center gap-1 px-1.5 py-0.5 rounded-md hover:text-blue-600 hover:bg-blue-50"
-                    aria-label={t('sidebar.moveMeeting')}
-                  >
-                    <FolderInput className="w-3.5 h-3.5" /> Move
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleEditStart(item.id, item.title);
-                    }}
-                    className="flex items-center gap-1 px-1.5 py-0.5 rounded-md hover:text-blue-600 hover:bg-blue-50"
-                    aria-label={t('sidebar.editTitle')}
-                  >
-                    <Pencil className="w-3.5 h-3.5" /> Rename
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setDeleteModalState({ isOpen: true, itemId: item.id });
-                    }}
-                    className="flex items-center gap-1 px-1.5 py-0.5 rounded-md hover:text-red-600 hover:bg-red-50"
-                    aria-label={t('sidebar.deleteMeeting')}
-                  >
-                    <Trash2 className="w-3.5 h-3.5" /> Delete
-                  </button>
-                </div>
-              )}
-
               {/* Show transcript match snippet if available */}
               {hasTranscriptMatch && (
                 <div className="mt-1 ml-8 text-xs text-gray-500 bg-yellow-50 p-1.5 rounded border border-yellow-100 line-clamp-2">
@@ -763,6 +802,7 @@ const Sidebar: React.FC = () => {
             </div>
           )}
         </div>
+        </MeetingActionsTooltip>
         {item.type === 'folder' && isExpanded && item.children && (
           <div className="ml-1">
             {item.children.map(child => renderItem(child, depth + 1))}
@@ -917,15 +957,24 @@ const Sidebar: React.FC = () => {
               <div className="flex-shrink-0">
                 {filteredSidebarItems.filter(item => item.type === 'folder').map(item => (
                   <div key={item.id}>
-                    <div
-                      className="flex items-center transition-all duration-150 p-3 text-lg font-semibold h-10 mx-3 mt-3 rounded-lg"
+                    <button
+                      onClick={() => toggleFolder(item.id)}
+                      aria-expanded={expandedFolders.has(item.id)}
+                      className="w-[calc(100%-1.5rem)] flex items-center transition-all duration-150 p-3 text-lg font-semibold h-10 mx-3 mt-3 rounded-lg hover:bg-gray-100"
                     >
+                      {expandedFolders.has(item.id) ? (
+                        <ChevronDown className="w-3.5 h-3.5 mr-1.5 text-gray-500" />
+                      ) : (
+                        <ChevronRight className="w-3.5 h-3.5 mr-1.5 text-gray-500" />
+                      )}
                       <NotebookPen className="w-4 h-4 mr-2 text-gray-600" />
                       <span className="text-gray-700">{item.id === 'meetings' ? t('nav.meetingNotes') : item.title}</span>
-                      {searchQuery && item.id === 'meetings' && isSearching && (
+                      {searchQuery && item.id === 'meetings' && isSearching ? (
                         <span className="ml-2 text-xs text-blue-500 animate-pulse">{t('common.searching')}</span>
+                      ) : (
+                        <span className="ml-auto text-xs font-normal text-gray-400">{item.children?.length ?? 0}</span>
                       )}
-                    </div>
+                    </button>
                   </div>
                 ))}
               </div>
@@ -938,7 +987,15 @@ const Sidebar: React.FC = () => {
                   .filter(item => item.type === 'folder' && expandedFolders.has(item.id) && item.children)
                   .map(item => (
                     <div key={`${item.id}-children`} className="mx-3">
-                      {item.children!.map(child => renderItem(child, 1))}
+                      {(searchQuery ? item.children! : item.children!.slice(0, MEETINGS_PREVIEW)).map(child => renderItem(child, 1))}
+                      {!searchQuery && item.id === 'meetings' && item.children!.length > MEETINGS_PREVIEW && (
+                        <button
+                          onClick={() => router.push('/meetings')}
+                          className="px-3 py-1.5 text-xs font-medium text-blue-600 hover:underline"
+                        >
+                          {t('knowledge.seeAll')} ({item.children!.length}) →
+                        </button>
+                      )}
                     </div>
                   ))}
               </div>

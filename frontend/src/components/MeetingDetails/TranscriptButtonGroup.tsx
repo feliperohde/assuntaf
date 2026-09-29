@@ -3,7 +3,8 @@
 import { useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
-import { Copy, FolderOpen, RefreshCw } from 'lucide-react';
+import { Copy, DatabaseZap, FolderOpen, Loader2, RefreshCw } from 'lucide-react';
+import { useReindexMeeting } from '@/hooks/useReindexMeeting';
 import Analytics from '@/lib/analytics';
 import { RetranscribeDialog } from './RetranscribeDialog';
 import { useConfig } from '@/contexts/ConfigContext';
@@ -31,6 +32,7 @@ export function TranscriptButtonGroup({
   const { t } = useI18n();
   const { betaFeatures } = useConfig();
   const [showRetranscribeDialog, setShowRetranscribeDialog] = useState(false);
+  const { reindex, reindexingId } = useReindexMeeting();
 
   const handleRetranscribeComplete = useCallback(async () => {
     // Refetch transcripts to show the updated data
@@ -70,6 +72,27 @@ export function TranscriptButtonGroup({
           <FolderOpen className="@[22rem]:mr-2" size={18} />
           <span className="hidden @[22rem]:inline">{t('transcript.recording')}</span>
         </Button>
+
+        {meetingId && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="px-2 @[22rem]:px-4"
+            onClick={() => {
+              Analytics.trackButtonClick('reindex_meeting', 'meeting_details');
+              reindex(meetingId);
+            }}
+            disabled={reindexingId === meetingId || transcriptCount === 0}
+            title={t('reindex.hint')}
+          >
+            {reindexingId === meetingId ? (
+              <Loader2 className="@[22rem]:mr-2 animate-spin" size={18} />
+            ) : (
+              <DatabaseZap className="@[22rem]:mr-2" size={18} />
+            )}
+            <span className="hidden @[22rem]:inline">{t('reindex.action')}</span>
+          </Button>
+        )}
 
         {betaFeatures.importAndRetranscribe && meetingId && meetingFolderPath && (
           <Button

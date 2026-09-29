@@ -31,6 +31,9 @@ pub struct Meeting {
     pub id: String,
     pub title: String,
     pub project_id: Option<String>,
+    /// RFC 3339
+    #[serde(default)]
+    pub created_at: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -349,6 +352,7 @@ pub async fn api_get_meetings<R: Runtime>(
                     id: m.id,
                     title: m.title,
                     project_id: m.project_id,
+                    created_at: Some(m.created_at.0.to_rfc3339()),
                 })
                 .collect();
             Ok(result)
