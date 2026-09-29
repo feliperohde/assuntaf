@@ -1,4 +1,5 @@
 use log::{error, info};
+use tauri::{AppHandle, Runtime};
 
 use crate::database::models::{Project, ProjectMember};
 use crate::database::repositories::project::{
@@ -65,15 +66,21 @@ pub async fn delete_project(
 }
 
 #[tauri::command]
-pub async fn set_meeting_project(
+pub async fn set_meeting_project<R: Runtime>(
+    app: AppHandle<R>,
     state: tauri::State<'_, AppState>,
     meeting_id: String,
     project_id: String,
 ) -> Result<bool, String> {
     info!("Moving meeting {} to project {}", meeting_id, project_id);
-    ProjectsRepository::set_meeting_project(state.db_manager.pool(), &meeting_id, &project_id)
+    let moved = ProjectsRepository::set_meeting_project(state.db_manager.pool(), &meeting_id, &project_id)
         .await
-        .map_err(|e| db_error("move meeting to project", e))
+        .map_err(|e| db_error("move meeting to project", e))?;
+    if moved {
+        // Rebuild facts against the new project's tickets and refresh the context header
+        crate::rag::schedule_meeting_index(app, meeting_id);
+    }
+    Ok(moved)
 }
 
 #[tauri::command]

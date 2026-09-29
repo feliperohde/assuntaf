@@ -164,6 +164,17 @@ impl ProjectsRepository {
             .execute(&mut *tx)
             .await?;
 
+        // Extracted facts are tied to the project's tickets; they are rebuilt when
+        // the moved meetings are reindexed.
+        sqlx::query("DELETE FROM entity_facts WHERE project_id = ?")
+            .bind(project_id)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DELETE FROM entities WHERE project_id = ?")
+            .bind(project_id)
+            .execute(&mut *tx)
+            .await?;
+
         sqlx::query("DELETE FROM project_members WHERE project_id = ?")
             .bind(project_id)
             .execute(&mut *tx)
@@ -201,6 +212,19 @@ impl ProjectsRepository {
             .bind(meeting_id)
             .execute(&mut *tx)
             .await?;
+        // Facts reference the old project's tickets; drop them (re-extracted on reindex)
+        let old_project: Option<(Option<String>,)> =
+            sqlx::query_as("SELECT DISTINCT project_id FROM entity_facts WHERE meeting_id = ?")
+                .bind(meeting_id)
+                .fetch_optional(&mut *tx)
+                .await?;
+        sqlx::query("DELETE FROM entity_facts WHERE meeting_id = ?")
+            .bind(meeting_id)
+            .execute(&mut *tx)
+            .await?;
+        if let Some(old_project) = old_project.and_then(|(p,)| p) {
+            crate::rag::entities::delete_orphan_entities(&mut *tx, &old_project).await?;
+        }
         tx.commit().await?;
         Ok(result.rows_affected() > 0)
     }

@@ -192,7 +192,9 @@ depende de crates do screenpipe) — serve só de referência. Implementação n
   FTS5, busca híbrida com RRF, reindexação por projeto, aba *Knowledge* nas configurações e painel de
   busca na página do projeto (PR #1)
 - [ ] Fase 3 — Diarização
-- [ ] Fase 4 — Entidades e fatos
+- [x] Fase 4 — Entidades e fatos (`rag/entities.rs`): após indexar, o LLM de resumo extrai status, bloqueios,
+  decisões e ações (com o trecho de origem); tickets reconhecidos pelos padrões do projeto; fatos entram como
+  evidência prioritária no *Ask* e aparecem nas abas Tickets / Decisions / Action items do projeto
 - [x] Fase 5 — Perguntas e respostas com citações (`rag/answer.rs`, página *Ask*): planner via LLM
   (consulta + filtros de data/reunião), busca híbrida com relaxamento de filtros, bloqueio sem evidência
   e resposta citando trechos [n] com reunião, data e minuto. Ainda sem streaming, sem histórico

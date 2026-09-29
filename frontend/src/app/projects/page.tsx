@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { ConfirmationModal } from '@/components/ConfirmationModel/confirmation-modal';
 import { ProjectKnowledgePanel } from '@/components/ProjectKnowledgePanel';
+import { ProjectFactsPanel } from '@/components/ProjectFactsPanel';
 import { useProject } from '@/contexts/ProjectContext';
 import {
   DEFAULT_PROJECT_ID,
@@ -338,6 +339,7 @@ export default function ProjectsPage() {
             )}
 
             {selectedId && <ProjectKnowledgePanel projectId={selectedId} />}
+            {selectedId && <ProjectFactsPanel projectId={selectedId} />}
           </div>
         </div>
       </div>

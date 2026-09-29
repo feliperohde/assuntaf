@@ -81,6 +81,20 @@ export function RagSettings() {
           />
         </div>
 
+        <div className="flex items-center justify-between">
+          <div>
+            <Label>Extract tickets, decisions and action items</Label>
+            <p className="text-xs text-gray-500 mt-1">
+              After indexing, the summary model lists ticket status, blockers, decisions and action items of each
+              meeting. Enables the Tickets view and more precise answers. Uses the summary model once per meeting.
+            </p>
+          </div>
+          <Switch
+            checked={config.extractFacts}
+            onCheckedChange={extractFacts => setConfig({ ...config, extractFacts })}
+          />
+        </div>
+
         <Button variant="blue" onClick={save} disabled={saving || !config.embeddingModel.trim()}>
           Save
         </Button>

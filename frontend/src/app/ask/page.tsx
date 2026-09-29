@@ -23,7 +23,7 @@ const EXAMPLES = [
   'On which day did we decide on the release date?',
 ];
 
-const KIND_LABELS: Record<string, string> = { transcript: 'Transcript', summary: 'Summary', notes: 'Notes' };
+const KIND_LABELS: Record<string, string> = { transcript: 'Transcript', summary: 'Summary', notes: 'Notes', fact: 'Recorded fact' };
 
 export default function AskPage() {
   const router = useRouter();

@@ -3,6 +3,7 @@ use serde::Deserialize;
 use tauri::{AppHandle, Runtime};
 
 use super::answer::{ask_project, Answer, ConversationTurn};
+use super::entities::{facts_by_type, list_tickets, ticket_facts, FactRow, TicketSummary};
 use super::indexer::{embedder_from_config, index_meeting_with_app, IndexOutcome};
 use super::llm::ConfiguredChatModel;
 use super::retriever::{hybrid_search, SearchResponse};
@@ -153,4 +154,47 @@ pub async fn rag_ask<R: Runtime>(
     )
     .await
     .map_err(|e| err("answer the question", e))
+}
+
+/// Tickets discussed in a project's meetings, with their latest recorded fact.
+#[tauri::command]
+pub async fn rag_list_tickets(
+    state: tauri::State<'_, AppState>,
+    project_id: String,
+) -> Result<Vec<TicketSummary>, String> {
+    list_tickets(state.db_manager.pool(), &project_id)
+        .await
+        .map_err(|e| err("list tickets", e))
+}
+
+/// Timeline of facts recorded about one ticket, newest first.
+#[tauri::command]
+pub async fn rag_ticket_facts(
+    state: tauri::State<'_, AppState>,
+    entity_id: String,
+) -> Result<Vec<FactRow>, String> {
+    ticket_facts(state.db_manager.pool(), &entity_id)
+        .await
+        .map_err(|e| err("load ticket facts", e))
+}
+
+/// Recent decisions and action items of a project (optionally one type).
+#[tauri::command]
+pub async fn rag_list_facts(
+    state: tauri::State<'_, AppState>,
+    project_id: String,
+    fact_type: String,
+    limit: Option<usize>,
+) -> Result<Vec<FactRow>, String> {
+    facts_by_type(
+        state.db_manager.pool(),
+        &project_id,
+        &[fact_type],
+        None,
+        None,
+        None,
+        limit.unwrap_or(50).clamp(1, 200),
+    )
+    .await
+    .map_err(|e| err("list facts", e))
 }

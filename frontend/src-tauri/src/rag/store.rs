@@ -17,6 +17,8 @@ pub struct RagConfig {
     pub embedding_provider: String,
     pub embedding_model: String,
     pub ollama_endpoint: Option<String>,
+    /// Extract tickets, decisions and action items with the summary LLM after indexing.
+    pub extract_facts: bool,
 }
 
 /// A chunk ready to be written, with its embedding when one was computed.
@@ -128,7 +130,7 @@ pub struct RagStore;
 impl RagStore {
     pub async fn get_config(pool: &SqlitePool) -> Result<RagConfig, SqlxError> {
         sqlx::query_as::<_, RagConfig>(
-            "SELECT enabled, embedding_provider, embedding_model, ollama_endpoint FROM rag_config WHERE id = 1",
+            "SELECT enabled, embedding_provider, embedding_model, ollama_endpoint, extract_facts FROM rag_config WHERE id = 1",
         )
         .fetch_one(pool)
         .await
@@ -139,12 +141,13 @@ impl RagStore {
             return Err(SqlxError::Protocol("embedding model cannot be empty".to_string()));
         }
         sqlx::query(
-            "UPDATE rag_config SET enabled = ?, embedding_provider = ?, embedding_model = ?, ollama_endpoint = ? WHERE id = 1",
+            "UPDATE rag_config SET enabled = ?, embedding_provider = ?, embedding_model = ?, ollama_endpoint = ?, extract_facts = ? WHERE id = 1",
         )
         .bind(config.enabled)
         .bind(&config.embedding_provider)
         .bind(config.embedding_model.trim())
         .bind(config.ollama_endpoint.as_deref().map(str::trim).filter(|e| !e.is_empty()))
+        .bind(config.extract_facts)
         .execute(pool)
         .await?;
         Ok(())

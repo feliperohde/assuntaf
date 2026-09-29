@@ -14,12 +14,14 @@ use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 
 use super::embeddings::EmbeddingProvider;
+use super::entities::{facts_by_type, facts_for_tickets, FactRow, TicketMatcher, FACT_TYPES};
 use super::llm::ChatModel;
 use super::retriever::{hybrid_search, SearchResult};
 use super::store::SearchFilters;
 use crate::database::repositories::project::ProjectsRepository;
 
 const PASSAGES_FOR_ANSWER: usize = 8;
+const FACTS_FOR_ANSWER: usize = 6;
 const MEETINGS_IN_PLANNER: i64 = 60;
 const HISTORY_TURNS: usize = 4;
 const HISTORY_ANSWER_CHARS: usize = 600;
@@ -53,6 +55,10 @@ pub struct QueryPlan {
     pub date_from: Option<String>,
     pub date_to: Option<String>,
     pub meeting_id: Option<String>,
+    /// Ticket IDs the question is about.
+    pub tickets: Vec<String>,
+    /// Kinds of extracted facts that answer the question (decision, action, blocker, status).
+    pub fact_types: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -107,10 +113,12 @@ fn format_history(history: &[ConversationTurn]) -> String {
 
 const PLANNER_SYSTEM: &str = "You convert a user's question about their team's meetings into a search plan. \
 Reply with ONLY a JSON object, no prose: \
-{\"search_query\": string, \"date_from\": \"YYYY-MM-DD\" or null, \"date_to\": \"YYYY-MM-DD\" or null, \"meeting_id\": string or null}. \
+{\"search_query\": string, \"date_from\": \"YYYY-MM-DD\" or null, \"date_to\": \"YYYY-MM-DD\" or null, \"meeting_id\": string or null, \"tickets\": [string], \"fact_types\": [string]}. \
 search_query: the key terms to search for (keep names, ticket IDs and technical terms verbatim; resolve pronouns using the conversation). \
 date_from is inclusive and date_to is exclusive; set them only when the question refers to a time (e.g. \"yesterday\", \"last week\", \"on the 22nd\"). \
-meeting_id: set only when the question clearly refers to one specific meeting from the list; copy its id exactly.";
+meeting_id: set only when the question clearly refers to one specific meeting from the list; copy its id exactly. \
+tickets: ticket/issue IDs the question is about (e.g. [\"ABC-123\"]), else []. \
+fact_types: which recorded facts would answer it: \"decision\" (what was decided), \"action\" (tasks, who will do what), \"blocker\" (what is blocked and why), \"status\" (state of a ticket); [] if none apply.";
 
 fn planner_prompt(question: &str, today: NaiveDate, meetings: &[MeetingInfo], history: &[ConversationTurn]) -> String {
     let meeting_list = meetings
@@ -128,13 +136,17 @@ fn planner_prompt(question: &str, today: NaiveDate, meetings: &[MeetingInfo], hi
 
 /// Parses the planner's reply, discarding anything invalid. Never fails: the
 /// fallback is the raw question with no filters.
-pub fn parse_plan(reply: &str, question: &str, known_meeting_ids: &[String]) -> QueryPlan {
+pub fn parse_plan(reply: &str, question: &str, known_meeting_ids: &[String], matcher: &TicketMatcher) -> QueryPlan {
     #[derive(Deserialize)]
     struct RawPlan {
         search_query: Option<String>,
         date_from: Option<String>,
         date_to: Option<String>,
         meeting_id: Option<String>,
+        #[serde(default)]
+        tickets: Vec<String>,
+        #[serde(default)]
+        fact_types: Vec<String>,
     }
 
     let fallback = QueryPlan { search_query: question.to_string(), ..Default::default() };
@@ -171,6 +183,67 @@ pub fn parse_plan(reply: &str, question: &str, known_meeting_ids: &[String]) -> 
         date_from,
         date_to,
         meeting_id: raw.meeting_id.filter(|id| known_meeting_ids.contains(id)),
+        tickets: dedup(raw.tickets.iter().filter_map(|t| matcher.normalize(t))),
+        fact_types: dedup(
+            raw.fact_types
+                .iter()
+                .map(|t| t.trim().to_lowercase())
+                .filter(|t| FACT_TYPES.contains(&t.as_str())),
+        ),
+    }
+}
+
+fn dedup(items: impl Iterator<Item = String>) -> Vec<String> {
+    let mut out = Vec::new();
+    for item in items {
+        if !out.contains(&item) {
+            out.push(item);
+        }
+    }
+    out
+}
+
+/// A passage or recorded fact shown to the answer model as a numbered excerpt.
+struct Evidence {
+    id: String,
+    meeting_id: String,
+    meeting_title: String,
+    meeting_date: String,
+    kind: String,
+    start_time: Option<f64>,
+    end_time: Option<f64>,
+    text: String,
+}
+
+impl From<&SearchResult> for Evidence {
+    fn from(r: &SearchResult) -> Self {
+        Evidence {
+            id: r.hit.chunk_id.clone(),
+            meeting_id: r.hit.meeting_id.clone(),
+            meeting_title: r.hit.meeting_title.clone(),
+            meeting_date: r.hit.meeting_date.clone(),
+            kind: r.hit.kind.clone(),
+            start_time: r.hit.start_time,
+            end_time: r.hit.end_time,
+            text: r.hit.text.clone(),
+        }
+    }
+}
+
+impl From<&FactRow> for Evidence {
+    fn from(f: &FactRow) -> Self {
+        let subject = f.ticket.as_deref().map(|t| format!(" {t}")).unwrap_or_default();
+        let owner = f.owner.as_deref().map(|o| format!(" (owner: {o})")).unwrap_or_default();
+        Evidence {
+            id: f.id.clone(),
+            meeting_id: f.meeting_id.clone(),
+            meeting_title: f.meeting_title.clone(),
+            meeting_date: f.meeting_date.clone(),
+            kind: "fact".into(),
+            start_time: f.start_time,
+            end_time: None,
+            text: format!("{}{}: {}{}", f.fact_type.to_uppercase(), subject, f.content, owner),
+        }
     }
 }
 
@@ -185,6 +258,7 @@ fn kind_label(kind: &str) -> &'static str {
     match kind {
         "summary" => "Summary",
         "notes" => "Notes",
+        "fact" => "Recorded fact",
         _ => "Transcript",
     }
 }
@@ -203,23 +277,23 @@ fn answer_prompt(
     question: &str,
     today: NaiveDate,
     project_context: Option<&str>,
-    results: &[SearchResult],
+    evidence: &[Evidence],
     history: &[ConversationTurn],
 ) -> String {
-    let excerpts = results
+    let excerpts = evidence
         .iter()
         .enumerate()
-        .map(|(i, r)| {
-            let date = r.hit.meeting_date.get(..10).unwrap_or(&r.hit.meeting_date);
-            let time = r.hit.start_time.map(|t| format!(" · {}", format_time(t))).unwrap_or_default();
+        .map(|(i, e)| {
+            let date = e.meeting_date.get(..10).unwrap_or(&e.meeting_date);
+            let time = e.start_time.map(|t| format!(" · {}", format_time(t))).unwrap_or_default();
             format!(
                 "[{}] Meeting \"{}\" · {}{} · {}\n{}",
                 i + 1,
-                r.hit.meeting_title,
+                e.meeting_title,
                 date,
                 time,
-                kind_label(&r.hit.kind),
-                r.hit.text
+                kind_label(&e.kind),
+                e.text
             )
         })
         .collect::<Vec<_>>()
@@ -302,16 +376,23 @@ pub async fn ask_project(
     // 1. Plan
     let meetings = recent_meetings(pool, project_id).await?;
     let meeting_ids: Vec<String> = meetings.iter().map(|m| m.id.clone()).collect();
-    let plan = match llm
+    let patterns: Option<(Option<String>,)> = sqlx::query_as("SELECT ticket_patterns FROM projects WHERE id = ?")
+        .bind(project_id)
+        .fetch_optional(pool)
+        .await?;
+    let matcher = TicketMatcher::new(patterns.and_then(|(p,)| p).as_deref());
+    let mut plan = match llm
         .complete(PLANNER_SYSTEM, &planner_prompt(question, today, &meetings, history))
         .await
     {
-        Ok(reply) => parse_plan(&reply, question, &meeting_ids),
+        Ok(reply) => parse_plan(&reply, question, &meeting_ids, &matcher),
         Err(e) => {
             log::warn!("RAG: planner failed, searching with the raw question: {}", e);
             QueryPlan { search_query: question.to_string(), ..Default::default() }
         }
     };
+    // Ticket IDs typed in the question count even if the planner missed them
+    plan.tickets = dedup(plan.tickets.iter().cloned().chain(matcher.find_all(question)));
     log::info!("RAG: plan {:?}", plan);
 
     // 2. Retrieve (relaxing filters if they leave nothing)
@@ -338,8 +419,30 @@ pub async fn ask_project(
     }
     let notice = response.vector_error.clone();
 
+    // Recorded facts: newest statements about the tickets asked about, plus
+    // decisions/actions/etc. when the question is about those
+    let mut facts = facts_for_tickets(pool, project_id, &plan.tickets, FACTS_FOR_ANSWER).await?;
+    if !plan.fact_types.is_empty() {
+        let (meeting, from, to) = if filters_relaxed {
+            (None, None, None)
+        } else {
+            (plan.meeting_id.as_deref(), plan.date_from.as_deref(), plan.date_to.as_deref())
+        };
+        for fact in facts_by_type(pool, project_id, &plan.fact_types, meeting, from, to, FACTS_FOR_ANSWER).await? {
+            if !facts.iter().any(|f| f.id == fact.id) {
+                facts.push(fact);
+            }
+        }
+        facts.truncate(FACTS_FOR_ANSWER);
+    }
+    let evidence: Vec<Evidence> = facts
+        .iter()
+        .map(Evidence::from)
+        .chain(response.results.iter().map(Evidence::from))
+        .collect();
+
     // 3. Evidence gate
-    if response.results.is_empty() {
+    if evidence.is_empty() {
         return Ok(Answer {
             answer: String::new(),
             found: false,
@@ -355,28 +458,27 @@ pub async fn ask_project(
     let answer = llm
         .complete(
             ANSWER_SYSTEM,
-            &answer_prompt(question, today, project_context.as_deref(), &response.results, history),
+            &answer_prompt(question, today, project_context.as_deref(), &evidence, history),
         )
         .await?
         .trim()
         .to_string();
 
-    let cited = cited_indices(&answer, response.results.len());
-    let citations = response
-        .results
+    let cited = cited_indices(&answer, evidence.len());
+    let citations = evidence
         .iter()
         .enumerate()
         .filter(|(i, _)| cited.is_empty() || cited.contains(&(i + 1)))
-        .map(|(i, r)| Citation {
+        .map(|(i, e)| Citation {
             index: i + 1,
-            chunk_id: r.hit.chunk_id.clone(),
-            meeting_id: r.hit.meeting_id.clone(),
-            meeting_title: r.hit.meeting_title.clone(),
-            meeting_date: r.hit.meeting_date.clone(),
-            kind: r.hit.kind.clone(),
-            start_time: r.hit.start_time,
-            end_time: r.hit.end_time,
-            excerpt: excerpt(&r.hit.text),
+            chunk_id: e.id.clone(),
+            meeting_id: e.meeting_id.clone(),
+            meeting_title: e.meeting_title.clone(),
+            meeting_date: e.meeting_date.clone(),
+            kind: e.kind.clone(),
+            start_time: e.start_time,
+            end_time: e.end_time,
+            excerpt: excerpt(&e.text),
         })
         .collect();
 
@@ -494,6 +596,7 @@ mod tests {
             "Sure:\n```json\n{\"search_query\": \"ABC-123 bloqueio\", \"date_from\": \"2026-09-21\", \"date_to\": \"2026-09-28\", \"meeting_id\": \"m1\"}\n```",
             "q",
             &ids,
+            &TicketMatcher::new(None),
         );
         assert_eq!(plan.search_query, "ABC-123 bloqueio");
         assert_eq!(plan.date_from.as_deref(), Some("2026-09-21"));
@@ -505,13 +608,23 @@ mod tests {
             r#"{"search_query": " ", "date_from": "22/09", "date_to": "2026-09-01", "meeting_id": "invented"}"#,
             "original question",
             &ids,
+            &TicketMatcher::new(None),
         );
         assert_eq!(plan, QueryPlan { search_query: "original question".into(), date_to: Some("2026-09-01".into()), ..Default::default() });
 
-        let plan = parse_plan(r#"{"date_from": "2026-09-10", "date_to": "2026-09-01"}"#, "q", &ids);
+        let plan = parse_plan(r#"{"date_from": "2026-09-10", "date_to": "2026-09-01"}"#, "q", &ids, &TicketMatcher::new(None));
         assert_eq!((plan.date_from, plan.date_to), (None, None));
 
-        assert_eq!(parse_plan("no json here", "q", &ids).search_query, "q");
+        assert_eq!(parse_plan("no json here", "q", &ids, &TicketMatcher::new(None)).search_query, "q");
+
+        let plan = parse_plan(
+            r#"{"search_query": "x", "tickets": ["abc-123", "nope", "ABC-123"], "fact_types": ["Decision", "gossip"]}"#,
+            "q",
+            &ids,
+            &TicketMatcher::new(Some("ABC-\\d+")),
+        );
+        assert_eq!(plan.tickets, vec!["ABC-123".to_string()]);
+        assert_eq!(plan.fact_types, vec!["decision".to_string()]);
     }
 
     #[test]
@@ -598,5 +711,43 @@ mod tests {
         let prompts = llm.prompts.lock().unwrap();
         assert!(prompts[1].contains("Q: Teve deploy?\nA: Sim, sexta."));
         assert!(!prompts[1].contains("[2]"));
+    }
+
+    #[tokio::test]
+    async fn recorded_facts_come_first_and_are_cited() {
+        let pool = setup().await;
+        let now = Utc::now();
+        sqlx::query("INSERT INTO entities (id, project_id, entity_type, key, display_name, created_at, updated_at) VALUES ('e1', 'p1', 'ticket', 'ABC-123', 'ABC-123', ?, ?)")
+            .bind(now)
+            .bind(now)
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO entity_facts (id, entity_id, project_id, meeting_id, fact_type, content, start_time, meeting_date, created_at) VALUES ('f1', 'e1', 'p1', 'm1', 'blocker', 'Falta acesso ao ambiente de homologação', 125.0, '2026-09-22 10:00:00+00:00', ?)")
+            .bind(now)
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO entity_facts (id, entity_id, project_id, meeting_id, fact_type, content, meeting_date, created_at) VALUES ('f2', NULL, 'p1', 'm2', 'decision', 'Release na sexta', '2026-09-28 10:00:00+00:00', ?)")
+            .bind(now)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        // The planner misses the ticket; it is still picked up from the question text
+        let llm = ScriptedLlm::new(vec![
+            Ok(r#"{"search_query": "bloqueio", "tickets": [], "fact_types": ["decision"]}"#),
+            Ok("Falta acesso ao ambiente [1]. Também decidiram a release [2]."),
+        ]);
+        let answer = ask_project(&pool, &KeywordEmbedder, &llm, "p1", "Por que o ABC-123 está bloqueado?", &[], today())
+            .await
+            .unwrap();
+        assert_eq!(answer.plan.tickets, vec!["ABC-123".to_string()]);
+        assert_eq!(answer.citations.len(), 2);
+        assert_eq!(answer.citations[0].kind, "fact");
+        assert_eq!(answer.citations[0].chunk_id, "f1");
+        assert_eq!(answer.citations[1].chunk_id, "f2");
+        let prompts = llm.prompts.lock().unwrap();
+        assert!(prompts[1].contains("[1] Meeting \"Daily\" · 2026-09-22 · 2:05 · Recorded fact\nBLOCKER ABC-123: Falta acesso"));
     }
 }

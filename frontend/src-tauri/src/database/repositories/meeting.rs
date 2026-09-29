@@ -289,6 +289,18 @@ async fn delete_meeting_with_transaction(
         .bind(meeting_id)
         .execute(&mut *transaction)
         .await?;
+    let project_id: Option<(Option<String>,)> =
+        sqlx::query_as("SELECT project_id FROM meetings WHERE id = ?")
+            .bind(meeting_id)
+            .fetch_optional(&mut *transaction)
+            .await?;
+    sqlx::query("DELETE FROM entity_facts WHERE meeting_id = ?")
+        .bind(meeting_id)
+        .execute(&mut *transaction)
+        .await?;
+    if let Some(project_id) = project_id.and_then(|(p,)| p) {
+        crate::rag::entities::delete_orphan_entities(&mut *transaction, &project_id).await?;
+    }
 
     // 4. Delete from transcripts
     sqlx::query("DELETE FROM transcripts WHERE meeting_id = ?")
