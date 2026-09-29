@@ -112,6 +112,7 @@ pub async fn api_save_meeting_summary<R: Runtime>(
     match SummaryProcessesRepository::update_meeting_summary(pool, &meeting_id, &summary).await {
         Ok(true) => {
             log_info!("Summary saved successfully for meeting_id: {}", meeting_id);
+            crate::rag::schedule_meeting_index(_app.clone(), meeting_id.clone());
             Ok(serde_json::json!({
                 "message": "Meeting summary saved successfully"
             }))

@@ -50,6 +50,7 @@ pub mod groq;
 pub mod openrouter;
 pub mod parakeet_engine;
 pub mod projects;
+pub mod rag;
 pub mod state;
 pub mod summary;
 pub mod tray;
@@ -627,6 +628,12 @@ pub fn run() {
             projects::commands::create_project_member,
             projects::commands::update_project_member,
             projects::commands::delete_project_member,
+            rag::commands::rag_get_config,
+            rag::commands::rag_save_config,
+            rag::commands::rag_index_status,
+            rag::commands::rag_index_meeting,
+            rag::commands::rag_reindex_project,
+            rag::commands::rag_search,
             analytics::commands::init_analytics,
             analytics::commands::disable_analytics,
             analytics::commands::track_event,

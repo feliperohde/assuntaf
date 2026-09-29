@@ -157,6 +157,13 @@ impl ProjectsRepository {
             .execute(&mut *tx)
             .await?;
 
+        // Indexed chunks follow their meetings
+        sqlx::query("UPDATE rag_chunks SET project_id = ? WHERE project_id = ?")
+            .bind(DEFAULT_PROJECT_ID)
+            .bind(project_id)
+            .execute(&mut *tx)
+            .await?;
+
         sqlx::query("DELETE FROM project_members WHERE project_id = ?")
             .bind(project_id)
             .execute(&mut *tx)
@@ -180,12 +187,21 @@ impl ProjectsRepository {
         if Self::get_project(pool, project_id).await?.is_none() {
             return Err(SqlxError::RowNotFound);
         }
+        let mut conn = pool.acquire().await?;
+        let mut tx = conn.begin().await?;
         let result = sqlx::query("UPDATE meetings SET project_id = ?, updated_at = ? WHERE id = ?")
             .bind(project_id)
             .bind(Utc::now())
             .bind(meeting_id)
-            .execute(pool)
+            .execute(&mut *tx)
             .await?;
+        // Indexed chunks follow their meeting so search stays scoped correctly
+        sqlx::query("UPDATE rag_chunks SET project_id = ? WHERE meeting_id = ?")
+            .bind(project_id)
+            .bind(meeting_id)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
         Ok(result.rows_affected() > 0)
     }
 
