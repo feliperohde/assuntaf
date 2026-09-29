@@ -24,6 +24,7 @@ pub mod recording_commands;
 pub mod recording_preferences;
 pub mod recording_saver;
 pub mod voice_activity;  // mic vs system levels per recording (who spoke)
+pub mod clip;  // play back a transcript line from the recording
 pub mod incremental_saver;  // NEW: Incremental audio saving with checkpoints
 pub mod level_monitor;
 pub mod simple_level_monitor;

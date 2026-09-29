@@ -656,6 +656,7 @@ pub fn run() {
             me::commands::set_meeting_speaker_is_me,
             me::commands::my_time_report,
             diarization::commands::infer_speaker_names,
+            audio::clip::commands::get_meeting_audio_clip,
             diarization::commands::merge_meeting_speakers,
             analytics::commands::init_analytics,
             analytics::commands::disable_analytics,

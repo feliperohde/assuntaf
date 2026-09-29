@@ -102,6 +102,7 @@ export function TranscriptPanel({
           totalCount={totalCount}
           loadedCount={loadedCount}
           onLoadMore={onLoadMore}
+          meetingId={meetingFolderPath ? meetingId : undefined}
         />
       </div>
 

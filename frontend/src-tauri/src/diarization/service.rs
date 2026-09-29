@@ -38,7 +38,7 @@ pub struct DiarizeOutcome {
     pub naming_error: Option<String>,
 }
 
-async fn meeting_audio(pool: &SqlitePool, meeting_id: &str) -> Result<PathBuf> {
+pub async fn meeting_audio(pool: &SqlitePool, meeting_id: &str) -> Result<PathBuf> {
     let folder: Option<(Option<String>,)> = sqlx::query_as("SELECT folder_path FROM meetings WHERE id = ?")
         .bind(meeting_id)
         .fetch_optional(pool)
